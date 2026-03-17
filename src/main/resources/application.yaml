@@ -1,0 +1,22 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: processor
+
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+
+rabbitmq:
+  exchange: email-events
+  queue: email-processed
+  routing-key: email.processed
+
+logging:
+  level:
+    com.inboxintelligence.processor: DEBUG
+    org.springframework.amqp: INFO
