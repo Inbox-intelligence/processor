@@ -1,4 +1,4 @@
-1package com.inboxintelligence.processor.config;
+package com.inboxintelligence.processor.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
