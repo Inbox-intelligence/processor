@@ -5,6 +5,20 @@ spring:
   application:
     name: processor
 
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/ingester
+    username: ${DB_USERNAME:inboxuser}
+    password: ${DB_PASSWORD:inboxpass}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+
   rabbitmq:
     host: ${RABBITMQ_HOST:localhost}
     port: ${RABBITMQ_PORT:5672}
@@ -15,6 +29,46 @@ rabbitmq:
   exchange: email-events
   queue: email-processed
   routing-key: email.processed
+
+email-storage:
+  local-base-path: ${EMAIL_STORAGE_LOCAL_BASE_PATH:./data}
+
+cleaning:
+  patterns:
+    quoted-text:
+      - "(?m)^On .{10,80}<[^>]+>\\s*wrote:\\s*$"
+      - "(?m)^On .{10,80} wrote:\\s*$"
+      - "(?m)^-{3,}\\s*Original Message\\s*-{3,}"
+      - "(?ms)^From:\\s.*\\nSent:\\s.*\\nTo:\\s.*"
+      - "(?m)^_{3,}\\s*$"
+    signatures:
+      - "^-- ?$"
+      - "(?i)^Sent from my (iPhone|iPad|Galaxy|Samsung)"
+      - "(?i)^Sent from Mail for Windows"
+      - "(?i)^Get Outlook for (iOS|Android)"
+      - "(?i)^Sent from Yahoo Mail"
+    sign-off-phrases:
+      - "best regards"
+      - "kind regards"
+      - "warm regards"
+      - "regards"
+      - "thanks"
+      - "thank you"
+      - "cheers"
+      - "sincerely"
+      - "respectfully"
+      - "best"
+    disclaimer-keywords:
+      - "confidential"
+      - "privileged"
+      - "intended recipient"
+      - "unauthorized"
+      - "disclaimer"
+      - "this email"
+      - "this message"
+      - "please notify"
+      - "delete this"
+      - "legally privileged"
 
 logging:
   level:
