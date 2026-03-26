@@ -6,8 +6,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
+import org.springframework.util.ObjectUtils;
 import org.springframework.util.StringUtils;
 
+import java.lang.reflect.Method;
 import java.util.Comparator;
 import java.util.List;
 
@@ -17,58 +19,56 @@ import java.util.List;
 public class ContentSanitizationPipelineRegistry {
 
     private final ApplicationContext applicationContext;
-    private List<Object> pipeline;
+    private List<Object> sanitizationPipeline;
 
     @PostConstruct
     void buildSanitizationPipeline() {
 
-        pipeline = applicationContext.getBeansWithAnnotation(SanitizationStep.class)
+        sanitizationPipeline = applicationContext.getBeansWithAnnotation(SanitizationStep.class)
                 .values().stream()
                 .sorted(Comparator.comparingInt(bean -> bean.getClass().getAnnotation(SanitizationStep.class).order()))
-                .map(bean -> {
-                    try {
-
-                        var method = bean.getClass().getMethod("process", String.class);
-                        if (method.getReturnType().equals(String.class)) {
-                            var annotation = bean.getClass().getAnnotation(SanitizationStep.class);
-                            log.info("Step {}: {}", annotation.order(), bean.getClass().getSimpleName());
-                            return bean;
-                        }
-                        throw new IllegalStateException(bean.getClass().getSimpleName() + ": process (String) must return String");
-
-                    } catch (NoSuchMethodException e) {
-
-                        throw new IllegalStateException(bean.getClass().getSimpleName() + ": must have 'public String process(String)' method");
-
-                    }
-                })
+                .peek(bean -> log.info("Preparing SanitizationPipeline Step {}: {}", getSanitizationStepOrder(bean), getSanitizationStepName(bean)))
                 .toList();
 
-        log.info("Sanitization pipeline built with {} steps", pipeline.size());
+        log.info("Sanitization pipeline built with {} steps", sanitizationPipeline.size());
     }
+
 
     public String executeSanitizationPipeline(String content) {
 
-        if (!StringUtils.hasText(content)) {
-            return "";
-        }
-
-        for (Object bean : pipeline) {
-            try {
-
-                if (!StringUtils.hasText(content)) {
-                    continue;
+        for (Object bean : sanitizationPipeline) {
+            if (StringUtils.hasText(content)) {
+                try {
+                    String before = content;
+                    content = invokeSanitizationStep(bean, content);
+                    log.debug("{} : {} -> {} chars", getSanitizationStepName(bean), before.length(), content.length());
+                } catch (Exception e) {
+                    throw new IllegalStateException("Failed at step: " + getSanitizationStepName(bean), e);
                 }
-
-                String before = content;
-                content = (String) bean.getClass().getMethod("process", String.class).invoke(bean, content);
-                log.debug("{} : {} → {} chars", bean.getClass().getSimpleName(), before.length(), content.length());
-
-            } catch (Exception e) {
-                throw new IllegalStateException("Failed at step: " + bean.getClass().getSimpleName(), e);
             }
         }
 
         return content;
+    }
+
+    private String invokeSanitizationStep(Object bean, String content) {
+
+        try {
+            var method = bean.getClass().getMethod("process", String.class);
+            if (String.class.equals(method.getReturnType())) {
+                return (String) method.invoke(bean, content);
+            }
+            throw new IllegalStateException(getSanitizationStepName(bean) + ": process(String) must return String");
+        } catch (Exception e) {
+            throw new IllegalStateException(getSanitizationStepName(bean) + ": must have 'public String process(String)' method");
+        }
+    }
+
+    private String getSanitizationStepName(Object bean) {
+        return bean.getClass().getSimpleName();
+    }
+
+    private int getSanitizationStepOrder(Object bean) {
+        return bean.getClass().getAnnotation(SanitizationStep.class).order();
     }
 }

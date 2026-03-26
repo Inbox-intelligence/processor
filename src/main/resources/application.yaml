@@ -24,6 +24,15 @@ spring:
     port: ${RABBITMQ_PORT:5672}
     username: ${RABBITMQ_USERNAME:guest}
     password: ${RABBITMQ_PASSWORD:guest}
+    listener:
+      simple:
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          max-attempts: 3
+          initial-interval: 1000
+          multiplier: 2.0
+          max-interval: 10000
 
 rabbitmq:
   exchange: email-events
@@ -31,7 +40,7 @@ rabbitmq:
   routing-key: email.processed
 
 email-storage:
-  local-base-path: ${EMAIL_STORAGE_LOCAL_BASE_PATH:./data}
+  provider: ${EMAIL_STORAGE_PROVIDER:LOCAL}
 
 sanitization:
   quoted-text-patterns:

@@ -14,7 +14,7 @@ public class EmailProcessedListener {
 
     private final EmailProcessingService emailProcessingService;
 
-    @RabbitListener(queues = "#{@emailQueue.name}")
+    @RabbitListener(queues = "#{@emailInboundQueue.name}")
     public void handleEmailProcessedEvent(EmailProcessedEvent event) {
         log.info("Received EmailProcessedEvent for emailContentId: {}", event.emailContentId());
         emailProcessingService.processEmail(event.emailContentId());

@@ -1,10 +1,7 @@
 package com.inboxintelligence.processor.config;
 
 import lombok.RequiredArgsConstructor;
-import org.springframework.amqp.core.Binding;
-import org.springframework.amqp.core.BindingBuilder;
-import org.springframework.amqp.core.Queue;
-import org.springframework.amqp.core.TopicExchange;
+import org.springframework.amqp.core.*;
 import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
 import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.context.annotation.Bean;
@@ -14,24 +11,49 @@ import org.springframework.context.annotation.Configuration;
 @RequiredArgsConstructor
 public class RabbitMQConfig {
 
-    private final RabbitMQProperties rabbitMQProperties;
+    private final RabbitMQProperties properties;
+
+    // --- Inbound (main queue with DLQ routing) ---
 
     @Bean
-    public Queue emailQueue() {
-        return new Queue(rabbitMQProperties.queue(), true);
+    public Queue emailInboundQueue() {
+        return QueueBuilder.durable(properties.queue())
+                .withArgument("x-dead-letter-exchange", properties.exchange() + ".dlx")
+                .withArgument("x-dead-letter-routing-key", properties.routingKey() + ".dlq")
+                .build();
     }
 
     @Bean
-    public TopicExchange emailExchange() {
-        return new TopicExchange(rabbitMQProperties.exchange());
+    public TopicExchange emailInboundExchange() {
+        return new TopicExchange(properties.exchange());
     }
 
     @Bean
-    public Binding emailBinding(Queue emailQueue, TopicExchange emailExchange) {
+    public Binding emailInboundBinding(Queue emailInboundQueue, TopicExchange emailInboundExchange) {
         return BindingBuilder
-                .bind(emailQueue)
-                .to(emailExchange)
-                .with(rabbitMQProperties.routingKey());
+                .bind(emailInboundQueue)
+                .to(emailInboundExchange)
+                .with(properties.routingKey());
+    }
+
+    // --- Dead Letter Queue ---
+
+    @Bean
+    public Queue deadLetterQueue() {
+        return QueueBuilder.durable(properties.queue() + ".dlq").build();
+    }
+
+    @Bean
+    public TopicExchange deadLetterExchange() {
+        return new TopicExchange(properties.exchange() + ".dlx");
+    }
+
+    @Bean
+    public Binding deadLetterBinding(Queue deadLetterQueue, TopicExchange deadLetterExchange) {
+        return BindingBuilder
+                .bind(deadLetterQueue)
+                .to(deadLetterExchange)
+                .with(properties.routingKey() + ".dlq");
     }
 
     @Bean

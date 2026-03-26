@@ -1,7 +1,7 @@
 package com.inboxintelligence.processor.domain.sanitization.step;
 
 import com.inboxintelligence.processor.config.SanitizationStep;
-import org.apache.commons.lang3.StringUtils;
+
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -9,6 +9,7 @@ import org.jsoup.nodes.Node;
 import org.jsoup.nodes.TextNode;
 import org.jsoup.select.NodeTraversor;
 import org.jsoup.select.NodeVisitor;
+import org.springframework.util.StringUtils;
 
 import java.util.Set;
 
@@ -63,7 +64,7 @@ public class HtmlToTextConverter {
                         sb.append('\n');
                     } else if ("a".equals(el.normalName()) && el.hasAttr("href")) {
                         String href = el.attr("href");
-                        if (!StringUtils.equals(el.text(), href)) {
+                        if (!href.equals(el.text())) {
                             sb.append(" (").append(href).append(")");
                         }
                     }

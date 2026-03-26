@@ -4,12 +4,13 @@ import com.inboxintelligence.processor.domain.sanitization.ContentSanitizationPi
 import com.inboxintelligence.processor.model.ProcessedStatus;
 import com.inboxintelligence.processor.model.entity.EmailContent;
 import com.inboxintelligence.processor.persistence.service.EmailContentService;
-import com.inboxintelligence.processor.persistence.storage.EmailStorageReader;
+import com.inboxintelligence.processor.persistence.storage.EmailStorageProviderFactory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+
+import static com.inboxintelligence.processor.model.ProcessedStatus.*;
 
 @Service
 @RequiredArgsConstructor
@@ -17,55 +18,51 @@ import org.springframework.util.StringUtils;
 public class EmailProcessingService {
 
     private final EmailContentService emailContentService;
-
-    private final EmailStorageReader emailStorageReader;
+    private final EmailStorageProviderFactory storageProviderFactory;
     private final ContentSanitizationPipelineRegistry pipelineRegistry;
-
 
     public void processEmail(Long emailContentId) {
 
-        var email = getEmailContentAndUpdateStatus(emailContentId);
+        var emailContent = emailContentService
+                .findById(emailContentId)
+                .orElseThrow(() -> new RuntimeException("EmailContent not found for id: " + emailContentId));
+        try {
 
-        if (email != null) {
-            String cleanedText = triggerSanitizationPipeline(email);
+            emailContent.setProcessedStatus(PROCESSING_STARTED);
+            emailContentService.save(emailContent);
+
+            String cleanedText = sanitizeEmailContent(emailContent);
+
+            emailContent.setProcessedStatus(PROCESSING_COMPLETED);
+            emailContentService.save(emailContent);
+
+        } catch (Exception e) {
+
+            log.error("Failed to process emailContent [id={}]", emailContentId, e);
+
+            emailContent.setProcessedStatus(PROCESSING_FAILED);
+            emailContentService.save(emailContent);
         }
-
-        // TODO: Pass cleanedText to Intelligence Layer (LLM)
     }
 
-    @Transactional
-    public EmailContent getEmailContentAndUpdateStatus(Long emailContentId) {
+    private String sanitizeEmailContent(EmailContent email) {
 
-        var emailContentOptional = emailContentService.findById(emailContentId);
+        var provider = storageProviderFactory.getProvider();
 
-        if (emailContentOptional.isEmpty()) {
-            log.warn("EmailContent not found for id: {}", emailContentId);
-            return null;
-        }
-
-        var email = emailContentOptional.get();
-        log.info("Processing email [id={}, subject='{}']", email.getId(), email.getSubject());
-
-        email.setProcessedStatus(ProcessedStatus.PROCESSING_STARTED);
-        return emailContentService.save(email);
-    }
-
-    public String triggerSanitizationPipeline(EmailContent email) {
-
-        String bodyContent = emailStorageReader.readContent(email.getBodyContentPath()).orElse("");
-        String htmlContent = emailStorageReader.readContent(email.getBodyHtmlContentPath()).orElse("");
+        String bodyContent = provider.readContent(email.getBodyContentPath());
+        String htmlContent = provider.readContent(email.getBodyHtmlContentPath());
         log.debug("Content for email [id={}]: body={} chars, html={} chars", email.getId(), bodyContent.length(), htmlContent.length());
 
-        String rawContent = "";
+        String rawContent;
 
         if (StringUtils.hasText(htmlContent)) {
             rawContent = htmlContent;
         } else if (StringUtils.hasText(bodyContent)) {
             rawContent = bodyContent;
         } else {
+            log.warn("No content found for email [id={}]", email.getId());
             return "";
         }
-
 
         int originalLength = rawContent.length();
         String cleanedText = pipelineRegistry.executeSanitizationPipeline(rawContent);
@@ -75,11 +72,7 @@ public class EmailProcessingService {
             return rawContent;
         }
 
-
-        log.info("Cleaned email [id={}, {} -> {} chars]", email.getId(), htmlContent.length() + bodyContent.length(), cleanedText.length());
-
+        log.info("Sanitized email [id={}, {} -> {} chars]", email.getId(), originalLength, cleanedText.length());
         return cleanedText;
     }
-
-
 }
