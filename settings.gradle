@@ -1,3 +1,1 @@
 rootProject.name = 'processor'
-
-includeBuild('../db-migrations')

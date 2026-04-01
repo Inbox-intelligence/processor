@@ -26,8 +26,8 @@ public class EmailProcessingService {
         var emailContent = emailContentService
                 .findById(emailContentId)
                 .orElseThrow(() -> new RuntimeException("EmailContent not found for id: " + emailContentId));
-        try {
 
+        try {
             emailContent.setProcessedStatus(PROCESSING_STARTED);
             emailContentService.save(emailContent);
 

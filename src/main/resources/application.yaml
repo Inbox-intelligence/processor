@@ -6,9 +6,9 @@ spring:
     name: processor
 
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/ingester
-    username: ${DB_USERNAME:inboxuser}
-    password: ${DB_PASSWORD:inboxpass}
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT}/inbox-intelligence
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
 
   jpa:
@@ -20,10 +20,10 @@ spring:
         format_sql: true
 
   rabbitmq:
-    host: ${RABBITMQ_HOST:localhost}
-    port: ${RABBITMQ_PORT:5672}
-    username: ${RABBITMQ_USERNAME:guest}
-    password: ${RABBITMQ_PASSWORD:guest}
+    host: ${RABBITMQ_HOST}
+    port: ${RABBITMQ_PORT}
+    username: ${RABBITMQ_USERNAME}
+    password: ${RABBITMQ_PASSWORD}
     listener:
       simple:
         default-requeue-rejected: false
@@ -40,7 +40,7 @@ rabbitmq:
   routing-key: email.processed
 
 email-storage:
-  provider: ${EMAIL_STORAGE_PROVIDER:LOCAL}
+  provider: ${EMAIL_STORAGE_PROVIDER}
 
 sanitization:
   quoted-text-patterns:
