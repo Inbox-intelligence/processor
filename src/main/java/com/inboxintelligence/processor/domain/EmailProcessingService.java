@@ -1,10 +1,10 @@
 package com.inboxintelligence.processor.domain;
 
 import com.inboxintelligence.processor.domain.sanitization.ContentSanitizationPipelineRegistry;
-import com.inboxintelligence.processor.model.ProcessedStatus;
-import com.inboxintelligence.processor.model.entity.EmailContent;
-import com.inboxintelligence.processor.persistence.service.EmailContentService;
-import com.inboxintelligence.processor.persistence.storage.EmailStorageProviderFactory;
+import com.inboxintelligence.persistence.model.ProcessedStatus;
+import com.inboxintelligence.persistence.model.entity.EmailContent;
+import com.inboxintelligence.persistence.service.EmailContentService;
+import com.inboxintelligence.persistence.storage.EmailStorageProviderFactory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -12,7 +12,7 @@ import org.springframework.util.StringUtils;
 
 import java.nio.file.Path;
 
-import static com.inboxintelligence.processor.model.ProcessedStatus.*;
+import static com.inboxintelligence.persistence.model.ProcessedStatus.*;
 
 @Service
 @RequiredArgsConstructor
@@ -40,6 +40,8 @@ public class EmailProcessingService {
 
             emailContent.setProcessedStatus(PROCESSING_COMPLETED);
             emailContentService.save(emailContent);
+
+            log.info("EmailContent [id={}] processed successfully", emailContentId);
 
         } catch (Exception e) {
 
