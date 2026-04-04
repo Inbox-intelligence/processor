@@ -1,7 +1,7 @@
 package com.inboxintelligence.processor.inbound;
 
-import com.inboxintelligence.processor.domain.EmailProcessingService;
 import com.inboxintelligence.persistence.model.EmailProcessedEvent;
+import com.inboxintelligence.processor.domain.EmailProcessingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;

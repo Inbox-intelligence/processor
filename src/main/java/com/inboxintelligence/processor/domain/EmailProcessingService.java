@@ -1,34 +1,26 @@
 package com.inboxintelligence.processor.domain;
 
-import com.inboxintelligence.persistence.config.RabbitMQProperties;
 import com.inboxintelligence.persistence.model.entity.EmailContent;
 import com.inboxintelligence.persistence.service.EmailContentService;
 import com.inboxintelligence.persistence.storage.EmailStorageProviderFactory;
-import com.inboxintelligence.processor.config.EmbeddingQueueProperties;
 import com.inboxintelligence.processor.domain.sanitization.ContentSanitizationPipelineRegistry;
-import com.inboxintelligence.processor.model.EmailSanitizedEvent;
+import com.inboxintelligence.processor.outbound.EventPublisher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.nio.file.Path;
-import java.util.Objects;
-
 import static com.inboxintelligence.persistence.model.ProcessedStatus.*;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
-@Slf4j
 public class EmailProcessingService {
 
+    private final EventPublisher eventPublisher;
     private final EmailContentService emailContentService;
     private final EmailStorageProviderFactory storageProviderFactory;
     private final ContentSanitizationPipelineRegistry pipelineRegistry;
-    private final RabbitTemplate rabbitTemplate;
-    private final RabbitMQProperties rabbitMQProperties;
-    private final EmbeddingQueueProperties embeddingQueueProperties;
 
     public void processEmail(Long emailContentId) {
 
@@ -37,94 +29,51 @@ public class EmailProcessingService {
                 .orElseThrow(() -> new RuntimeException("EmailContent not found for id: " + emailContentId));
 
         try {
-            emailContent.setProcessedStatus(SANITIZATION_STARTED);
-            emailContentService.save(emailContent);
 
-            String cleanedText = sanitizeEmailContent(emailContent);
-
-            String processedContentPath = storeProcessedContent(emailContent, cleanedText);
-            emailContent.setProcessedContentPath(processedContentPath);
-
-            emailContent.setProcessedStatus(SANITIZATION_COMPLETED);
-            emailContentService.save(emailContent);
-
-            publishEmbeddingEvent(emailContentId);
-
+            sanitize(emailContent);
+            eventPublisher.publishEmbeddingEvent(emailContentId);
             log.info("EmailContent [id={}] sanitized and queued for embedding", emailContentId);
 
         } catch (Exception e) {
-
             log.error("Failed to process emailContent [id={}]", emailContentId, e);
-
             emailContent.setProcessedStatus(PROCESSING_FAILED);
             emailContentService.save(emailContent);
         }
     }
 
-    private void publishEmbeddingEvent(Long emailContentId) {
-        rabbitTemplate.convertAndSend(
-                rabbitMQProperties.exchange(),
-                embeddingQueueProperties.routingKey(),
-                new EmailSanitizedEvent(emailContentId)
-        );
-        log.debug("Published EmailSanitizedEvent for emailContentId: {}", emailContentId);
-    }
+    public void sanitize(EmailContent emailContent) {
 
-    private String storeProcessedContent(EmailContent email, String cleanedText) {
-
-        if (!StringUtils.hasText(cleanedText)) {
-            return null;
-        }
-
-        String existingPath = StringUtils.hasText(email.getBodyHtmlContentPath())
-                ? email.getBodyHtmlContentPath()
-                : email.getBodyContentPath();
-
-        if (!StringUtils.hasText(existingPath)) {
-            throw new IllegalStateException("No valid content path found for email id: " + email.getId());
-        }
-
-        Path parentPath = Path.of(existingPath).getParent();
-
-        if (parentPath == null) {
-            throw new IllegalStateException("Cannot resolve parent directory from path: " + existingPath);
-        }
-
-        String directoryPath = parentPath.toString();
+        log.info("Starting sanitization for email id: {}", emailContent.getId());
         var provider = storageProviderFactory.getProvider();
 
-        return provider.writeContent(directoryPath, "processed_content.txt", cleanedText);
-    }
+        emailContentService.updateProcessedStatus(emailContent, SANITIZATION_STARTED);
 
-    private String sanitizeEmailContent(EmailContent email) {
+        String html = provider.readContent(emailContent.getBodyHtmlContentPath());
+        String body = provider.readContent(emailContent.getBodyContentPath());
 
-        var provider = storageProviderFactory.getProvider();
 
-        String bodyContent = Objects.requireNonNullElse(provider.readContent(email.getBodyContentPath()), "");
-        String htmlContent = Objects.requireNonNullElse(provider.readContent(email.getBodyHtmlContentPath()), "");
+        String rawContent = StringUtils.hasText(html) ? html : StringUtils.hasText(body) ? body : "";
 
-        log.debug("Content for email [id={}]: body={} chars, html={} chars", email.getId(), bodyContent.length(), htmlContent.length());
+        if (StringUtils.hasText(rawContent)) {
 
-        String rawContent;
+            int originalLength = rawContent.length();
+            String cleanedText = pipelineRegistry.executeSanitizationPipeline(rawContent);
 
-        if (StringUtils.hasText(htmlContent)) {
-            rawContent = htmlContent;
-        } else if (StringUtils.hasText(bodyContent)) {
-            rawContent = bodyContent;
-        } else {
-            log.warn("No content found for email [id={}]", email.getId());
-            return "";
+            if (cleanedText.length() < 20 && cleanedText.length() < originalLength * 0.1) {
+                log.warn("Pipeline removed too much content ({} -> {} chars), falling back to original", originalLength, cleanedText.length());
+                cleanedText = rawContent;
+            }
+
+            log.info("Sanitized email [id={}, {} -> {} chars]", emailContent.getId(), originalLength, cleanedText.length());
+
+            String processedContentPath = provider.writeContent(emailContent.getId(), emailContent.getMessageId(), "processed_content.txt", cleanedText);
+
+            emailContent.setProcessedContentPath(processedContentPath);
+            emailContent.setProcessedStatus(SANITIZATION_COMPLETED);
+            emailContentService.save(emailContent);
+
+            log.info("Sanitized content stored at: {} for email id: {}", processedContentPath, emailContent.getId());
         }
 
-        int originalLength = rawContent.length();
-        String cleanedText = pipelineRegistry.executeSanitizationPipeline(rawContent);
-
-        if (cleanedText.length() < 20 && cleanedText.length() < originalLength * 0.1) {
-            log.warn("Pipeline removed too much content ({} -> {} chars), falling back to original", originalLength, cleanedText.length());
-            return rawContent;
-        }
-
-        log.info("Sanitized email [id={}, {} -> {} chars]", email.getId(), originalLength, cleanedText.length());
-        return cleanedText;
     }
 }

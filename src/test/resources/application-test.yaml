@@ -6,7 +6,7 @@ spring:
     password:
   jpa:
     hibernate:
-      ddl-auto: create-drop
+      ddl-auto: none
     database-platform: org.hibernate.dialect.H2Dialect
   rabbitmq:
     host: localhost
@@ -16,14 +16,14 @@ spring:
     listener:
       simple:
         auto-startup: false
-
-rabbitmq:
-  exchange: test-exchange
-  queue: test-queue
-  routing-key: test.key
-  embedding:
-    queue: test-embedding-queue
-    routing-key: test.embedding.key
+    email-processing:
+      exchange: test-exchange
+      queue: test-queue
+      routing-key: test.key
+    email-embedding:
+      exchange: test-exchange
+      queue: test-embedding-queue
+      routing-key: test.embedding.key
 
 email-storage:
   provider: LOCAL

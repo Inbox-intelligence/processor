@@ -1,6 +1,6 @@
 package com.inboxintelligence.processor.domain.embedding;
 
-import com.inboxintelligence.processor.config.EmbeddingProperties;
+import com.inboxintelligence.processor.config.EmbeddingVendorProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -15,17 +15,24 @@ import java.util.Map;
 public class OllamaEmbeddingProvider implements EmbeddingProvider {
 
     private final RestClient restClient;
-    private final EmbeddingProperties properties;
+    private final EmbeddingVendorProperties properties;
 
     @Override
     public List<Double> generateEmbedding(String text) {
 
-        Map<String, String> request = Map.of(
+        String input = text;
+        if (properties.maxChars() != null && input.length() > properties.maxChars()) {
+            log.warn("Truncating embedding input [{} -> {} chars]", input.length(), properties.maxChars());
+            input = input.substring(0, properties.maxChars());
+        }
+
+        Map<String, Object> request = Map.of(
                 "model", properties.model(),
-                "prompt", text
+                "prompt", input,
+                "options", Map.of("num_ctx", properties.numCtx() != null ? properties.numCtx() : 8192)
         );
 
-        log.debug("Requesting embedding from Ollama [model={}, textLength={}]", properties.model(), text.length());
+        log.debug("Requesting embedding from Ollama [model={}, textLength={}]", properties.model(), input.length());
 
         @SuppressWarnings("unchecked")
         Map<String, Object> response = restClient.post()

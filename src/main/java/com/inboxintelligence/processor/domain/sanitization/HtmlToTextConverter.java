@@ -1,7 +1,6 @@
-package com.inboxintelligence.processor.domain.sanitization.step;
+package com.inboxintelligence.processor.domain.sanitization;
 
 import com.inboxintelligence.processor.config.SanitizationStep;
-
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -9,7 +8,6 @@ import org.jsoup.nodes.Node;
 import org.jsoup.nodes.TextNode;
 import org.jsoup.select.NodeTraversor;
 import org.jsoup.select.NodeVisitor;
-import org.springframework.util.StringUtils;
 
 import java.util.Set;
 

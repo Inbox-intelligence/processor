@@ -1,4 +1,4 @@
-package com.inboxintelligence.processor.domain.sanitization.step;
+package com.inboxintelligence.processor.domain.sanitization;
 
 import com.inboxintelligence.processor.config.SanitizationStep;
 
@@ -14,22 +14,6 @@ public class TextNormalizer {
     private static final Pattern INVISIBLE_CHARS = Pattern.compile("[\u200B-\u200F\u00AD\u034F\u061C\uFEFF\u2060-\u2064]");
     private static final Pattern TRAILING_SPACES = Pattern.compile("(?m)[ \\t]+$");
     private static final Pattern EXCESSIVE_NEWLINES = Pattern.compile("\n{3,}");
-
-    public String process(String content) {
-
-        String result = content.replace("\r\n", "\n").replace("\r", "\n");
-
-        for (var entry : CHARACTER_REPLACEMENTS.entrySet()) {
-            result = result.replace(entry.getKey(), entry.getValue());
-        }
-
-        result = UNICODE_SPACES.matcher(result).replaceAll(" ");
-        result = INVISIBLE_CHARS.matcher(result).replaceAll("");
-        result = TRAILING_SPACES.matcher(result).replaceAll("");
-        result = EXCESSIVE_NEWLINES.matcher(result).replaceAll("\n\n");
-
-        return result.strip();
-    }
 
     private static Map<String, String> buildReplacementMap() {
 
@@ -80,5 +64,21 @@ public class TextNormalizer {
         map.put("\u00F7", "/");
 
         return Map.copyOf(map);
+    }
+
+    public String process(String content) {
+
+        String result = content.replace("\r\n", "\n").replace("\r", "\n");
+
+        for (var entry : CHARACTER_REPLACEMENTS.entrySet()) {
+            result = result.replace(entry.getKey(), entry.getValue());
+        }
+
+        result = UNICODE_SPACES.matcher(result).replaceAll(" ");
+        result = INVISIBLE_CHARS.matcher(result).replaceAll("");
+        result = TRAILING_SPACES.matcher(result).replaceAll("");
+        result = EXCESSIVE_NEWLINES.matcher(result).replaceAll("\n\n");
+
+        return result.strip();
     }
 }

@@ -24,32 +24,25 @@ spring:
     port: ${RABBITMQ_PORT}
     username: ${RABBITMQ_USERNAME}
     password: ${RABBITMQ_PASSWORD}
-    listener:
-      simple:
-        default-requeue-rejected: false
-        retry:
-          enabled: true
-          max-attempts: 3
-          initial-interval: 1000
-          multiplier: 2.0
-          max-interval: 10000
-
-rabbitmq:
-  exchange: ${RABBITMQ_EXCHANGE}
-  queue: ${RABBITMQ_QUEUE}
-  routing-key: ${RABBITMQ_ROUTING_KEY}
-  embedding:
-    queue: ${RABBITMQ_EMBEDDING_QUEUE}
-    routing-key: ${RABBITMQ_EMBEDDING_ROUTING_KEY}
+    email-processing:
+      exchange: ${RABBITMQ_PROCESSING_EXCHANGE}
+      queue: ${RABBITMQ_PROCESSING_QUEUE}
+      routing-key: ${RABBITMQ_PROCESSING_ROUTING_KEY}
+    email-embedding:
+      exchange: ${RABBITMQ_EMBEDDING_EXCHANGE}
+      queue: ${RABBITMQ_EMBEDDING_QUEUE}
+      routing-key: ${RABBITMQ_EMBEDDING_ROUTING_KEY}
 
 email-storage:
   provider: ${EMAIL_STORAGE_PROVIDER}
   local-base-path: ${EMAIL_STORAGE_LOCAL_BASE_PATH}
 
-embedding:
+embedding-vendor:
   provider: ${EMBEDDING_PROVIDER}
   ollama-url: ${EMBEDDING_OLLAMA_URL}
   model: ${EMBEDDING_MODEL}
+  num-ctx: 8192
+  max-chars: 30000
 
 sanitization:
   quoted-text-patterns:

@@ -23,7 +23,6 @@ configurations {
 }
 
 repositories {
-    mavenLocal()
     maven {
         name = "GitHubPackages"
         url = uri("https://maven.pkg.github.com/rja712/persistence-lib")

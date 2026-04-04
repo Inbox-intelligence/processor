@@ -1,6 +1,6 @@
 package com.inboxintelligence.processor.domain.embedding;
 
-import com.inboxintelligence.processor.config.EmbeddingProperties;
+import com.inboxintelligence.processor.config.EmbeddingVendorProperties;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -16,10 +16,10 @@ public class EmbeddingProviderFactory {
 
     private final EmbeddingProvider activeEmbeddingProvider;
 
-    public EmbeddingProviderFactory(EmbeddingProperties embeddingProperties,
+    public EmbeddingProviderFactory(EmbeddingVendorProperties embeddingVendorProperties,
                                     Map<String, EmbeddingProvider> embeddingProviderBeanMap) {
 
-        String configuredProvider = embeddingProperties.provider();
+        String configuredProvider = embeddingVendorProperties.provider();
         String beanName = DEFAULT_PROVIDER_BEAN;
 
         if (StringUtils.hasText(configuredProvider)) {
