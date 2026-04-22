@@ -14,17 +14,16 @@ import static com.inboxintelligence.persistence.model.ProcessedStatus.*;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class EmailEmbeddingPublisher {
+public class EmailClusteringPublisher {
 
     private final RabbitTemplate rabbitTemplate;
     private final EmailEventRabbitMQProperties properties;
     private final EmailContentService emailContentService;
 
-    public void publishEmbeddingEvent(EmailContent emailContent) {
-
+    public void publishClusteringEvent(EmailContent emailContent) {
         var event = new EmailEvent(emailContent.getId());
-        rabbitTemplate.convertAndSend(properties.exchange(), properties.embeddingRoutingKey(), event);
-        emailContentService.updateStatusAndNote(emailContent, PUBLISHED_FOR_EMBEDDING, null);
-        log.debug("Published EmailSanitizedEvent for event: {}", event);
+        rabbitTemplate.convertAndSend(properties.exchange(), properties.clusteringRoutingKey(), event);
+        emailContentService.updateStatusAndNote(emailContent, PUBLISHED_FOR_CLUSTER_ASSIGNMENT, null);
+        log.debug("Published clustering event for emailContent [id={}]", emailContent.getId());
     }
 }

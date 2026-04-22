@@ -19,6 +19,11 @@ spring:
       hibernate:
         format_sql: true
 
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
+
   rabbitmq:
     host: ${RABBITMQ_HOST}
     port: ${RABBITMQ_PORT}
@@ -33,6 +38,8 @@ spring:
       sanitization-routing-key: ${RABBITMQ_EMAIL_SANITIZATION_ROUTING_KEY}
       embedding-queue: ${RABBITMQ_EMAIL_EMBEDDING_QUEUE}
       embedding-routing-key: ${RABBITMQ_EMAIL_EMBEDDING_ROUTING_KEY}
+      clustering-queue: ${RABBITMQ_EMAIL_CLUSTERING_QUEUE}
+      clustering-routing-key: ${RABBITMQ_EMAIL_CLUSTERING_ROUTING_KEY}
 
 email-storage-provider:
   name: ${EMAIL_STORAGE_PROVIDER_NAME}

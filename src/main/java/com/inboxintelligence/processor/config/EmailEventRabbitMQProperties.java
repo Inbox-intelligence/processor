@@ -8,6 +8,8 @@ public record EmailEventRabbitMQProperties(
         String sanitizationQueue,
         String sanitizationRoutingKey,
         String embeddingQueue,
-        String embeddingRoutingKey
+        String embeddingRoutingKey,
+        String clusteringQueue,
+        String clusteringRoutingKey
 ) {
 }

@@ -69,6 +69,28 @@ public class RabbitMQConfig {
         return bindToExchange(embeddingDeadLetterQueue, deadLetterExchange, properties.embeddingRoutingKey() + ".dlq");
     }
 
+    // --- Clustering queue ---
+
+    @Bean
+    public Queue emailClusteringQueue() {
+        return buildQueue(properties.clusteringQueue(), properties.clusteringRoutingKey());
+    }
+
+    @Bean
+    public Binding emailClusteringBinding(Queue emailClusteringQueue, TopicExchange emailEventExchange) {
+        return bindToExchange(emailClusteringQueue, emailEventExchange, properties.clusteringRoutingKey());
+    }
+
+    @Bean
+    public Queue clusteringDeadLetterQueue() {
+        return buildDlq(properties.clusteringQueue());
+    }
+
+    @Bean
+    public Binding clusteringDeadLetterBinding(Queue clusteringDeadLetterQueue, TopicExchange deadLetterExchange) {
+        return bindToExchange(clusteringDeadLetterQueue, deadLetterExchange, properties.clusteringRoutingKey() + ".dlq");
+    }
+
     // --- Message converter ---
 
     @Bean
