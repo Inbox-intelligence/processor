@@ -20,7 +20,7 @@ import static com.inboxintelligence.persistence.model.ProcessedStatus.*;
 @RequiredArgsConstructor
 public class EmailClusteringService {
 
-    private final BatchClusteringMonitor batchClusteringMonitor;
+    private final BatchClusteringLock batchClusteringMonitor;
     private final EmailContentService emailContentService;
     private final EmailEnrichmentService emailEnrichmentService;
     private final ClusterService clusterService;
