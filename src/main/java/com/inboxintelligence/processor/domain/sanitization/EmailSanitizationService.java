@@ -80,6 +80,7 @@ public class EmailSanitizationService {
             emailContent.setRawMessagePath(null);
             emailContent.setBodyHtmlContentPath(null);
             emailContent.setBodyContentPath(null);
+            emailAttachmentService.deleteAllByEmailContentId(emailContent.getId(), provider);
 
             emailContentService.save(emailContent);
 
