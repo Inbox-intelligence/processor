@@ -1,9 +1,11 @@
 package com.inboxintelligence.processor.domain.sanitization;
 
+import com.inboxintelligence.persistence.model.ProcessedStatus;
 import com.inboxintelligence.persistence.model.entity.EmailAttachment;
 import com.inboxintelligence.persistence.model.entity.EmailContent;
 import com.inboxintelligence.persistence.service.EmailAttachmentService;
 import com.inboxintelligence.persistence.service.EmailContentService;
+import com.inboxintelligence.persistence.service.GmailMailboxService;
 import com.inboxintelligence.persistence.storage.EmailStorageProvider;
 import com.inboxintelligence.persistence.storage.EmailStorageProviderFactory;
 import com.inboxintelligence.processor.domain.sanitization.pipeline.ContentSanitizationPipelineRegistry;
@@ -36,6 +38,7 @@ public class EmailSanitizationService {
     private final EmailEmbeddingPublisher emailEmbeddingPublisher;
     private final EmailContentService emailContentService;
     private final EmailAttachmentService emailAttachmentService;
+    private final GmailMailboxService gmailMailboxService;
     private final EmailStorageProviderFactory storageProviderFactory;
     private final ContentSanitizationPipelineRegistry pipelineRegistry;
 
@@ -77,8 +80,11 @@ public class EmailSanitizationService {
 
             log.info("Sanitized email [id={}, {} -> {} chars]", emailContent.getId(), originalLength, cleanedText.length());
 
+            String email = gmailMailboxService.findById(emailContent.getGmailMailboxId())
+                    .orElseThrow(() -> new RuntimeException("Mailbox not found for id: " + emailContent.getGmailMailboxId()))
+                    .getEmailAddress();
             String enrichedContent = enrichSanitizedContent(emailContent, cleanedText);
-            String path = provider.writeContent(emailContent.getGmailMailboxId(), emailContent.getMessageId(), "processed_content.txt", enrichedContent);
+            String path = provider.writeContent(email, emailContent.getMessageId(), "processed_content.txt", enrichedContent);
 
             emailContent.setSanitizedContentPath(path);
             emailContent.setProcessedStatus(SANITIZATION_COMPLETED);
