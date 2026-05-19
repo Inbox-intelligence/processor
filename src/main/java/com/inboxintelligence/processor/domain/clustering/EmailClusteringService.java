@@ -97,7 +97,7 @@ public class EmailClusteringService {
             clusterService.save(bestCluster);
 
             emailContentService.updateStatusAndNote(emailContent, CLUSTER_ASSIGNMENT_COMPLETED, null);
-            log.info("EmailContent [id={}] assigned to cluster [id={}, label={}, similarity={}]", emailContent.getId(), bestCluster.getId(), bestCluster.getClusterLabel(), similarity);
+            log.info("EmailContent [id={}] assigned to cluster [id={}, clusterIndex={}, similarity={}]", emailContent.getId(), bestCluster.getId(), bestCluster.getClusterIndex(), similarity);
 
         } catch (Exception e) {
             log.error("Failed to assign cluster for emailContent [id={}]", emailContent.getId(), e);
