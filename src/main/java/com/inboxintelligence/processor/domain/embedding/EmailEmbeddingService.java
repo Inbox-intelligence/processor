@@ -32,15 +32,25 @@ public class EmailEmbeddingService {
     public void generateEmbedding(Long emailContentId) {
 
         log.info("Starting embedding for emailContent id: {}", emailContentId);
+
         EmailContent emailContent = emailContentService
                 .findById(emailContentId)
                 .orElseThrow(() -> new IllegalStateException("EmailContent not found: " + emailContentId));
 
-        if (emailContent.getProcessedStatus().ordinal() > SANITIZATION_COMPLETED.ordinal() && emailContent.getProcessedStatus() != EMBEDDING_STARTED) {
-            log.warn("EmailContent [id={}] already past embedding (status={}) — skipping redelivery", emailContentId, emailContent.getProcessedStatus());
+        EmailEnrichment enrichment = emailEnrichmentService
+                .findByEmailContentId(emailContentId)
+                .orElseGet(EmailEnrichment::new);
+
+        if (enrichment.getEmbedding() != null && enrichment.getEmbedding().length > 0) {
+            log.warn("EmailContent [id={}] already has embedding (status={}) — skipping redelivery", emailContentId, emailContent.getProcessedStatus());
+            emailContentService.updateStatusAndNote(emailContent, EMBEDDING_GENERATED, null);
+            emailClusteringPublisher.publishClusteringEvent(emailContent);
             return;
         }
+        invokeEmbeddingGeneration(emailContent, enrichment);
+    }
 
+    private void invokeEmbeddingGeneration(EmailContent emailContent, EmailEnrichment enrichment) {
         try {
 
             EmailStorageProvider storageProvider = storageProviderFactory.getProvider();
@@ -51,28 +61,28 @@ public class EmailEmbeddingService {
             String sanitizedContent = storageProvider.readContent(emailContent.getSanitizedContentPath());
 
             if (!StringUtils.hasText(sanitizedContent)) {
-                log.warn("No sanitized content for emailContent [id={}], marking failed", emailContentId);
+                log.warn("No sanitized content for emailContent [id={}], marking failed", emailContent.getId());
                 emailContentService.updateStatusAndNote(emailContent, EMBEDDING_FAILED, "No sanitized content found");
                 return;
             }
 
             float[] embedding = embeddingProvider.generateEmbedding(sanitizedContent);
-            log.info("EmailContent [id={}] embedding generated [dimensions={}]", emailContentId, embedding.length);
+            log.info("EmailContent [id={}] embedding generated [dimensions={}]", emailContent.getId(), embedding.length);
 
-            EmailEnrichment enrichment = emailEnrichmentService.findByEmailContentId(emailContentId).orElseGet(EmailEnrichment::new);
-            enrichment.setEmailContentId(emailContentId);
+            enrichment.setEmailContentId(emailContent.getId());
             enrichment.setEmbedding(embedding);
             enrichment.setEmbeddingModel(embeddingProviderProperties.model());
+
             emailEnrichmentService.save(enrichment);
 
             emailContentService.updateStatusAndNote(emailContent, EMBEDDING_GENERATED, null);
-            log.info("EmailContent [id={}] embedding persisted [model={}]", emailContentId, embeddingProviderProperties.model());
+            log.info("EmailContent [id={}] embedding persisted [model={}]", emailContent.getId(), embeddingProviderProperties.model());
 
             emailClusteringPublisher.publishClusteringEvent(emailContent);
-            log.info("EmailContent [id={}] queued for cluster assignment", emailContentId);
+            log.info("EmailContent [id={}] queued for cluster assignment", emailContent.getId());
 
         } catch (Exception e) {
-            log.error("Failed to embed emailContent [id={}]", emailContentId, e);
+            log.error("Failed to embed emailContent [id={}]", emailContent.getId(), e);
             emailContentService.updateStatusAndNote(emailContent, EMBEDDING_FAILED, e.getMessage());
             throw e;
         }

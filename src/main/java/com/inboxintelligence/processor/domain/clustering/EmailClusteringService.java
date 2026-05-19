@@ -14,7 +14,6 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Objects;
-
 import static com.inboxintelligence.persistence.model.ProcessedStatus.*;
 
 @Slf4j
@@ -32,37 +31,44 @@ public class EmailClusteringService {
 
     public void assignCluster(Long emailContentId) {
 
+        log.info("Assigning cluster for emailContent id: {}", emailContentId);
+
         EmailContent emailContent = emailContentService
                 .findById(emailContentId)
                 .orElseThrow(() -> new IllegalStateException("EmailContent not found: " + emailContentId));
 
-        if (emailContent.getProcessedStatus() == CLUSTER_ASSIGNMENT_COMPLETED) {
-            log.warn("EmailContent [id={}] already cluster-assigned — skipping redelivery", emailContentId);
+        EmailEnrichment enrichment = emailEnrichmentService
+                .findByEmailContentId(emailContentId)
+                .orElseGet(EmailEnrichment::new);
+
+        if (enrichment.getClusterId() != null) {
+            log.warn("EmailContent [id={}] already cluster-assigned (status={}) — skipping redelivery", emailContentId, emailContent.getProcessedStatus());
+            emailContentService.updateStatusAndNote(emailContent, CLUSTER_ASSIGNMENT_COMPLETED, null);
             return;
         }
+        invokeIncrementalClustering(emailContent, enrichment);
+    }
+
+    private void invokeIncrementalClustering(EmailContent emailContent, EmailEnrichment enrichment) {
 
         try {
             emailContentService.updateStatusAndNote(emailContent, CLUSTER_ASSIGNMENT_STARTED, null);
 
             if (batchClusteringLock.isActive(emailContent.getGmailMailboxId())) {
-                log.info("Batch clustering active for mailbox [id={}] — pausing incremental assignment for emailContent [id={}]", emailContent.getGmailMailboxId(), emailContentId);
-                emailContentService.updateStatusAndNote(emailContent, CLUSTER_ASSIGNMENT_DEFERRED, null);
+                log.info("Batch clustering active for mailbox [id={}] — pausing incremental assignment for emailContent [id={}]", emailContent.getGmailMailboxId(), emailContent.getId());
+                emailContentService.updateStatusAndNote(emailContent, CLUSTER_ASSIGNMENT_COMPLETED, null);
                 return;
             }
 
             List<Cluster> clusters = clusterService.findByMailboxId(emailContent.getGmailMailboxId());
             if (clusters.isEmpty()) {
-                log.info("No clusters for mailbox [id={}] — deferring assignment for emailContent [id={}]", emailContent.getGmailMailboxId(), emailContentId);
-                emailContentService.updateStatusAndNote(emailContent, CLUSTER_ASSIGNMENT_DEFERRED, null);
+                log.info("No clusters for mailbox [id={}] — deferring assignment for emailContent [id={}]", emailContent.getGmailMailboxId(), emailContent.getId());
+                emailContentService.updateStatusAndNote(emailContent, CLUSTER_ASSIGNMENT_COMPLETED, null);
                 return;
             }
 
-            EmailEnrichment enrichment = emailEnrichmentService
-                    .findByEmailContentId(emailContentId)
-                    .orElseThrow(() -> new IllegalStateException("EmailEnrichment not found for emailContent: " + emailContentId));
-
             if (enrichment.getEmbedding() == null) {
-                log.warn("No embedding on emailContent [id={}] — skipping incremental assignment", emailContentId);
+                log.warn("No embedding on emailContent [id={}] — skipping incremental assignment", emailContent.getId());
                 emailContentService.updateStatusAndNote(emailContent, CLUSTER_ASSIGNMENT_FAILED, "No embedding found");
                 return;
             }
@@ -77,8 +83,8 @@ public class EmailClusteringService {
             double similarity = cosineSimilarity(enrichment.getEmbedding(), bestCluster.getCentroid());
 
             if (similarity < minSimilarityThreshold) {
-                log.info("EmailContent [id={}] similarity {} below threshold {} — deferring to batch", emailContentId, String.format("%.4f", similarity), String.format("%.4f", minSimilarityThreshold));
-                emailContentService.updateStatusAndNote(emailContent, CLUSTER_ASSIGNMENT_DEFERRED, "similarity=" + String.format("%.4f", similarity));
+                log.info("EmailContent [id={}] similarity {} below threshold {} — deferring to batch", emailContent.getId(), String.format("%.4f", similarity), String.format("%.4f", minSimilarityThreshold));
+                emailContentService.updateStatusAndNote(emailContent, CLUSTER_ASSIGNMENT_COMPLETED, "similarity=" + String.format("%.4f", similarity));
                 return;
             }
 
@@ -91,10 +97,10 @@ public class EmailClusteringService {
             clusterService.save(bestCluster);
 
             emailContentService.updateStatusAndNote(emailContent, CLUSTER_ASSIGNMENT_COMPLETED, null);
-            log.info("EmailContent [id={}] assigned to cluster [id={}, label={}, similarity={}]", emailContentId, bestCluster.getId(), bestCluster.getClusterLabel(), similarity);
+            log.info("EmailContent [id={}] assigned to cluster [id={}, label={}, similarity={}]", emailContent.getId(), bestCluster.getId(), bestCluster.getClusterLabel(), similarity);
 
         } catch (Exception e) {
-            log.error("Failed to assign cluster for emailContent [id={}]", emailContentId, e);
+            log.error("Failed to assign cluster for emailContent [id={}]", emailContent.getId(), e);
             emailContentService.updateStatusAndNote(emailContent, CLUSTER_ASSIGNMENT_FAILED, e.getMessage());
             throw e;
         }

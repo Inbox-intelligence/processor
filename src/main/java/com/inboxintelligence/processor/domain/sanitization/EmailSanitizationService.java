@@ -1,6 +1,5 @@
 package com.inboxintelligence.processor.domain.sanitization;
 
-import com.inboxintelligence.persistence.model.ProcessedStatus;
 import com.inboxintelligence.persistence.model.entity.EmailAttachment;
 import com.inboxintelligence.persistence.model.entity.EmailContent;
 import com.inboxintelligence.persistence.service.EmailAttachmentService;
@@ -15,9 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.util.EnumSet;
 import java.util.List;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 import static com.inboxintelligence.persistence.model.ProcessedStatus.*;
@@ -27,13 +24,6 @@ import static com.inboxintelligence.persistence.model.ProcessedStatus.*;
 @RequiredArgsConstructor
 public class EmailSanitizationService {
 
-    private static final Set<ProcessedStatus> SANITIZATION_ALREADY_DONE = EnumSet.of(
-            SANITIZATION_COMPLETED, SANITIZATION_FAILED,
-            PUBLISHED_FOR_EMBEDDING, EMBEDDING_STARTED, EMBEDDING_GENERATED, EMBEDDING_FAILED,
-            PUBLISHED_FOR_CLUSTER_ASSIGNMENT, CLUSTER_ASSIGNMENT_STARTED,
-            CLUSTER_ASSIGNMENT_DEFERRED, CLUSTER_ASSIGNMENT_COMPLETED, CLUSTER_ASSIGNMENT_FAILED,
-            UNKNOWN_FAILURE
-    );
 
     private final EmailEmbeddingPublisher emailEmbeddingPublisher;
     private final EmailContentService emailContentService;
@@ -45,18 +35,28 @@ public class EmailSanitizationService {
     public void sanitizeEmail(Long emailContentId) {
 
         log.info("Starting sanitization for email id: {}", emailContentId);
+
+        EmailStorageProvider provider = storageProviderFactory.getProvider();
+
         EmailContent emailContent = emailContentService
                 .findById(emailContentId)
                 .orElseThrow(() -> new RuntimeException("EmailContent not found for id: " + emailContentId));
 
-        if (SANITIZATION_ALREADY_DONE.contains(emailContent.getProcessedStatus())) {
+        String sanitizedContent = provider.readContent(emailContent.getSanitizedContentPath());
+
+        if (StringUtils.hasText(sanitizedContent)) {
             log.warn("EmailContent [id={}] already past sanitization (status={}) — skipping redelivery", emailContentId, emailContent.getProcessedStatus());
-            return;
+            markStatusAndPublishForEmbedding(provider, emailContent);
+        } else {
+            invokeSanitization(provider, emailContent);
         }
+
+    }
+
+    private void invokeSanitization(EmailStorageProvider provider, EmailContent emailContent) {
 
         try {
 
-            EmailStorageProvider provider = storageProviderFactory.getProvider();
             emailContentService.updateStatusAndNote(emailContent, SANITIZATION_STARTED, null);
 
             String html = provider.readContent(emailContent.getBodyHtmlContentPath());
@@ -65,7 +65,7 @@ public class EmailSanitizationService {
             String rawContent = StringUtils.hasText(html) ? html : StringUtils.hasText(body) ? body : "";
 
             if (!StringUtils.hasText(rawContent)) {
-                log.warn("No raw content for email id: {}", emailContentId);
+                log.warn("No raw content for email: {}", emailContent.getId());
                 emailContentService.updateStatusAndNote(emailContent, SANITIZATION_FAILED, "No raw content");
                 return;
             }
@@ -83,34 +83,38 @@ public class EmailSanitizationService {
             String email = gmailMailboxService.findById(emailContent.getGmailMailboxId())
                     .orElseThrow(() -> new RuntimeException("Mailbox not found for id: " + emailContent.getGmailMailboxId()))
                     .getEmailAddress();
+
             String enrichedContent = enrichSanitizedContent(emailContent, cleanedText);
             String path = provider.writeContent(email, emailContent.getMessageId(), "processed_content.txt", enrichedContent);
 
             emailContent.setSanitizedContentPath(path);
-            emailContent.setProcessedStatus(SANITIZATION_COMPLETED);
-
-            //Clean up - Sanitized Content is always persisted
-            provider.deleteContent(emailContent.getRawMessagePath());
-            provider.deleteContent(emailContent.getBodyHtmlContentPath());
-            provider.deleteContent(emailContent.getBodyContentPath());
-            emailContent.setRawMessagePath(null);
-            emailContent.setBodyHtmlContentPath(null);
-            emailContent.setBodyContentPath(null);
-            emailAttachmentService.deleteAllByEmailContentId(emailContent.getId(), provider);
-
-            emailContentService.save(emailContent);
-
             log.info("Sanitized content stored at: {} for email id: {}", path, emailContent.getId());
-
-            emailEmbeddingPublisher.publishEmbeddingEvent(emailContent);
-            log.info("EmailContent [id={}] sanitized and queued for embedding", emailContentId);
-
+            this.markStatusAndPublishForEmbedding(provider, emailContent);
+            log.info("EmailContent [id={}] sanitized and queued for embedding", emailContent.getId());
 
         } catch (Exception e) {
-            log.error("Failed to process emailContent [id={}]", emailContentId, e);
+            log.error("Failed to process emailContent [id={}]", emailContent.getId(), e);
             emailContentService.updateStatusAndNote(emailContent, SANITIZATION_FAILED, e.getMessage());
             throw e;
         }
+    }
+
+    private void markStatusAndPublishForEmbedding(EmailStorageProvider provider, EmailContent emailContent) {
+
+        //Sanitized Content is always persisted rest is deleted
+        provider.deleteContent(emailContent.getRawMessagePath());
+        provider.deleteContent(emailContent.getBodyHtmlContentPath());
+        provider.deleteContent(emailContent.getBodyContentPath());
+
+        emailAttachmentService.deleteAllByEmailContentId(emailContent.getId(), provider);
+
+        emailContent.setRawMessagePath(null);
+        emailContent.setBodyHtmlContentPath(null);
+        emailContent.setBodyContentPath(null);
+        emailContent.setProcessedStatus(SANITIZATION_COMPLETED);
+        emailContentService.save(emailContent);
+
+        emailEmbeddingPublisher.publishEmbeddingEvent(emailContent);
     }
 
     private String enrichSanitizedContent(EmailContent emailContent, String sanitizedBody) {
