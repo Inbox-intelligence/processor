@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+
 import static com.inboxintelligence.persistence.model.ProcessedStatus.*;
 
 @Slf4j
@@ -20,13 +21,12 @@ import static com.inboxintelligence.persistence.model.ProcessedStatus.*;
 @RequiredArgsConstructor
 public class EmailClusteringService {
 
-    @Value("${clustering.incremental.min-similarity-threshold}")
-    private double minSimilarityThreshold;
-
     private final BatchClusteringLock batchClusteringLock;
     private final EmailContentService emailContentService;
     private final EmailEnrichmentService emailEnrichmentService;
     private final ClusterService clusterService;
+    @Value("${clustering.incremental.min-similarity-threshold}")
+    private double minSimilarityThreshold;
 
     public void assignCluster(Long emailContentId) {
 
@@ -122,7 +122,7 @@ public class EmailClusteringService {
     private double cosineSimilarity(float[] a, float[] b) {
         double dot = 0.0, normA = 0.0, normB = 0.0;
         for (int i = 0; i < a.length; i++) {
-            dot  += (double) a[i] * b[i];
+            dot += (double) a[i] * b[i];
             normA += (double) a[i] * a[i];
             normB += (double) b[i] * b[i];
         }

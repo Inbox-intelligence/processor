@@ -15,10 +15,9 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class OllamaEmbeddingProvider implements EmbeddingProvider {
 
+    private static final ParameterizedTypeReference<Map<String, List<Double>>> RESPONSE_TYPE = new ParameterizedTypeReference<>() {};
     private final RestClient restClient;
     private final EmbeddingProviderProperties properties;
-
-    private static final ParameterizedTypeReference<Map<String, List<Double>>> RESPONSE_TYPE = new ParameterizedTypeReference<>() {};
 
     @Override
     public float[] generateEmbedding(String text) {

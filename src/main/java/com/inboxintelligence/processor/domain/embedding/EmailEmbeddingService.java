@@ -69,6 +69,7 @@ public class EmailEmbeddingService {
             float[] embedding = embeddingProvider.generateEmbedding(sanitizedContent);
             log.info("EmailContent [id={}] embedding generated [dimensions={}]", emailContent.getId(), embedding.length);
 
+            enrichment.setGmailMailboxId(emailContent.getGmailMailboxId());
             enrichment.setEmailContentId(emailContent.getId());
             enrichment.setEmbedding(embedding);
             enrichment.setEmbeddingModel(embeddingProviderProperties.model());

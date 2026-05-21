@@ -1,8 +1,6 @@
 package com.inboxintelligence.processor.domain.embedding.factory;
 
 
-
-
 public class BedrockEmbeddingProvider implements EmbeddingProvider {
 
     @Override

@@ -11,10 +11,9 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class BatchClusteringLock {
 
+    private final StringRedisTemplate redisTemplate;
     @Value("${redis-lock.key-prefix}")
     private String keyPrefix;
-
-    private final StringRedisTemplate redisTemplate;
 
     public boolean isActive(Long mailboxId) {
         String key = mailboxKey(mailboxId);

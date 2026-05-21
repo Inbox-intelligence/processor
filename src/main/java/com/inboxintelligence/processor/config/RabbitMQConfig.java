@@ -19,7 +19,6 @@ public class RabbitMQConfig {
     private final EmailEventRabbitMQProperties properties;
 
 
-
     @Bean
     public SimpleRabbitListenerContainerFactory rabbitListenerContainerFactory(
             ConnectionFactory connectionFactory,
