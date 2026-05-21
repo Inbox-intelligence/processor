@@ -19,6 +19,12 @@ public class BatchClusteringLock {
     public boolean isActive(Long mailboxId) {
         String key = mailboxKey(mailboxId);
         String value = redisTemplate.opsForValue().get(key);
+
+        if (value == null) {
+            log.debug("Redis key [{}] not present — batch clustering NOT active for mailbox [{}]", key, mailboxId);
+            return false;
+        }
+
         boolean active = Boolean.parseBoolean(value);
         if (active) {
             log.debug("Redis key [{}] is active — batch clustering in progress for mailbox [{}]", key, mailboxId);

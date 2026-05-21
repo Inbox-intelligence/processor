@@ -40,7 +40,7 @@ public class EmailSanitizationService {
 
         EmailContent emailContent = emailContentService
                 .findById(emailContentId)
-                .orElseThrow(() -> new RuntimeException("EmailContent not found for id: " + emailContentId));
+                .orElseThrow(() -> new IllegalStateException("EmailContent not found: " + emailContentId));
 
         String sanitizedContent = provider.readContent(emailContent.getSanitizedContentPath());
 
@@ -81,7 +81,7 @@ public class EmailSanitizationService {
             log.info("Sanitized email [id={}, {} -> {} chars]", emailContent.getId(), originalLength, cleanedText.length());
 
             String email = gmailMailboxService.findById(emailContent.getGmailMailboxId())
-                    .orElseThrow(() -> new RuntimeException("Mailbox not found for id: " + emailContent.getGmailMailboxId()))
+                    .orElseThrow(() -> new IllegalStateException("Mailbox not found: " + emailContent.getGmailMailboxId()))
                     .getEmailAddress();
 
             String enrichedContent = enrichSanitizedContent(emailContent, cleanedText);
@@ -111,8 +111,7 @@ public class EmailSanitizationService {
         emailContent.setRawMessagePath(null);
         emailContent.setBodyHtmlContentPath(null);
         emailContent.setBodyContentPath(null);
-        emailContent.setProcessedStatus(SANITIZATION_COMPLETED);
-        emailContentService.save(emailContent);
+        emailContentService.updateStatusAndNote(emailContent, SANITIZATION_COMPLETED, null);
 
         emailEmbeddingPublisher.publishEmbeddingEvent(emailContent);
     }

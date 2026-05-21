@@ -13,7 +13,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.Objects;
 import static com.inboxintelligence.persistence.model.ProcessedStatus.*;
 
 @Slf4j
@@ -93,8 +92,7 @@ public class EmailClusteringService {
             enrichment.setClusterAssignmentType(ClusterAssignmentType.INCREMENTAL);
             emailEnrichmentService.save(enrichment);
 
-            bestCluster.setEmailCount(Objects.requireNonNullElse(bestCluster.getEmailCount(), 0) + 1);
-            clusterService.save(bestCluster);
+            clusterService.incrementEmailCount(bestCluster.getId());
 
             emailContentService.updateStatusAndNote(emailContent, CLUSTER_ASSIGNMENT_COMPLETED, null);
             log.info("EmailContent [id={}] assigned to cluster [id={}, clusterIndex={}, similarity={}]", emailContent.getId(), bestCluster.getId(), bestCluster.getClusterIndex(), similarity);
