@@ -87,6 +87,8 @@ public class EmailClusteringService {
                 return;
             }
 
+            enrichment.setGmailMailboxId(emailContent.getGmailMailboxId());
+            enrichment.setEmailContentId(emailContent.getId());
             enrichment.setClusterId(bestCluster.getId());
             enrichment.setClusterProbability(similarity);
             enrichment.setClusterAssignmentType(ClusterAssignmentType.INCREMENTAL);
