@@ -22,7 +22,7 @@ public class OllamaEmbeddingProvider implements EmbeddingProvider {
     @Override
     public float[] generateEmbedding(String text) {
 
-        String input = text;
+        String input = text == null ? "" : text.toLowerCase();
         if (properties.maxChars() != null && input.length() > properties.maxChars()) {
             int cutoff = input.lastIndexOf(' ', properties.maxChars());
             cutoff = cutoff > 0 ? cutoff : properties.maxChars();
