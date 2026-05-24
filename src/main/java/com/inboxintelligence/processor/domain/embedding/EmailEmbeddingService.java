@@ -1,14 +1,13 @@
 package com.inboxintelligence.processor.domain.embedding;
 
+import com.inboxintelligence.persistence.model.ProcessedStatus;
 import com.inboxintelligence.persistence.model.entity.EmailContent;
 import com.inboxintelligence.persistence.model.entity.EmailEnrichment;
 import com.inboxintelligence.persistence.service.EmailContentService;
 import com.inboxintelligence.persistence.service.EmailEnrichmentService;
-import com.inboxintelligence.persistence.storage.EmailStorageProvider;
-import com.inboxintelligence.persistence.storage.EmailStorageProviderFactory;
 import com.inboxintelligence.processor.config.EmbeddingProviderProperties;
-import com.inboxintelligence.processor.domain.embedding.factory.EmbeddingProvider;
-import com.inboxintelligence.processor.domain.embedding.factory.EmbeddingProviderFactory;
+import com.inboxintelligence.processor.domain.model.factory.ModelProvider;
+import com.inboxintelligence.processor.domain.model.factory.ModelProviderFactory;
 import com.inboxintelligence.processor.outbound.EmailClusteringPublisher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,8 +23,7 @@ public class EmailEmbeddingService {
 
     private final EmailContentService emailContentService;
     private final EmailEnrichmentService emailEnrichmentService;
-    private final EmbeddingProviderFactory embeddingProviderFactory;
-    private final EmailStorageProviderFactory storageProviderFactory;
+    private final ModelProviderFactory modelProviderFactory;
     private final EmbeddingProviderProperties embeddingProviderProperties;
     private final EmailClusteringPublisher emailClusteringPublisher;
 
@@ -43,7 +41,7 @@ public class EmailEmbeddingService {
 
         if (enrichment.getEmbedding() != null && enrichment.getEmbedding().length > 0) {
             log.warn("EmailContent [id={}] already has embedding (status={}) — skipping redelivery", emailContentId, emailContent.getProcessedStatus());
-            emailContentService.updateStatusAndNote(emailContent, EMBEDDING_GENERATED, null);
+            updateStatus(emailContent, EMBEDDING_GENERATED);
             emailClusteringPublisher.publishClusteringEvent(emailContent);
             return;
         }
@@ -52,41 +50,42 @@ public class EmailEmbeddingService {
 
     private void invokeEmbeddingGeneration(EmailContent emailContent, EmailEnrichment enrichment) {
         try {
+            ModelProvider modelProvider = modelProviderFactory.getProvider();
 
-            EmailStorageProvider storageProvider = storageProviderFactory.getProvider();
-            EmbeddingProvider embeddingProvider = embeddingProviderFactory.getProvider();
+            updateStatus(emailContent, EMBEDDING_STARTED);
 
-            emailContentService.updateStatusAndNote(emailContent, EMBEDDING_STARTED, null);
+            String normalizedContent = enrichment.getNormalizedContent();
 
-            String sanitizedContent = storageProvider.readContent(emailContent.getSanitizedContentPath());
-
-            if (!StringUtils.hasText(sanitizedContent)) {
-                log.warn("No sanitized content for emailContent [id={}], marking failed", emailContent.getId());
-                emailContentService.updateStatusAndNote(emailContent, EMBEDDING_FAILED, "No sanitized content found");
+            if (!StringUtils.hasText(normalizedContent)) {
+                log.warn("No normalized content for emailContent [id={}], marking failed", emailContent.getId());
+                updateStatus(emailContent, EMBEDDING_FAILED);
                 return;
             }
 
-            float[] embedding = embeddingProvider.generateEmbedding(sanitizedContent);
+            float[] embedding = modelProvider.generateEmbedding(normalizedContent);
             log.info("EmailContent [id={}] embedding generated [dimensions={}]", emailContent.getId(), embedding.length);
 
             enrichment.setGmailMailboxId(emailContent.getGmailMailboxId());
             enrichment.setEmailContentId(emailContent.getId());
             enrichment.setEmbedding(embedding);
-            enrichment.setEmbeddingModel(embeddingProviderProperties.model());
 
             emailEnrichmentService.save(enrichment);
 
-            emailContentService.updateStatusAndNote(emailContent, EMBEDDING_GENERATED, null);
+            updateStatus(emailContent, EMBEDDING_GENERATED);
             log.info("EmailContent [id={}] embedding persisted [model={}]", emailContent.getId(), embeddingProviderProperties.model());
 
             emailClusteringPublisher.publishClusteringEvent(emailContent);
             log.info("EmailContent [id={}] queued for cluster assignment", emailContent.getId());
 
         } catch (Exception e) {
-            log.error("Failed to embed emailContent [id={}]", emailContent.getId(), e);
-            emailContentService.updateStatusAndNote(emailContent, EMBEDDING_FAILED, e.getMessage());
+            log.error("Failed to embed emailContent [id={}]: {}", emailContent.getId(), e.getMessage(), e);
+            updateStatus(emailContent, EMBEDDING_FAILED);
             throw e;
         }
     }
 
+    private void updateStatus(EmailContent emailContent, ProcessedStatus status) {
+        emailContent.setProcessedStatus(status);
+        emailContentService.save(emailContent);
+    }
 }
