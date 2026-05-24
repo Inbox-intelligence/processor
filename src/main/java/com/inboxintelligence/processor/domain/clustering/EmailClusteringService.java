@@ -1,15 +1,16 @@
 package com.inboxintelligence.processor.domain.clustering;
 
 import com.inboxintelligence.persistence.model.ClusterAssignmentType;
+import com.inboxintelligence.persistence.model.ProcessedStatus;
 import com.inboxintelligence.persistence.model.entity.Cluster;
 import com.inboxintelligence.persistence.model.entity.EmailContent;
 import com.inboxintelligence.persistence.model.entity.EmailEnrichment;
 import com.inboxintelligence.persistence.service.ClusterService;
 import com.inboxintelligence.persistence.service.EmailContentService;
 import com.inboxintelligence.persistence.service.EmailEnrichmentService;
+import com.inboxintelligence.processor.config.ClusteringProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -25,8 +26,7 @@ public class EmailClusteringService {
     private final EmailContentService emailContentService;
     private final EmailEnrichmentService emailEnrichmentService;
     private final ClusterService clusterService;
-    @Value("${clustering.incremental.min-similarity-threshold}")
-    private double minSimilarityThreshold;
+    private final ClusteringProperties clusteringProperties;
 
     public void assignCluster(Long emailContentId) {
 
@@ -42,7 +42,7 @@ public class EmailClusteringService {
 
         if (enrichment.getClusterId() != null) {
             log.warn("EmailContent [id={}] already cluster-assigned (status={}) — skipping redelivery", emailContentId, emailContent.getProcessedStatus());
-            emailContentService.updateStatusAndNote(emailContent, CLUSTER_ASSIGNMENT_COMPLETED, null);
+            updateStatus(emailContent, CLUSTER_ASSIGNMENT_COMPLETED);
             return;
         }
         invokeIncrementalClustering(emailContent, enrichment);
@@ -51,39 +51,39 @@ public class EmailClusteringService {
     private void invokeIncrementalClustering(EmailContent emailContent, EmailEnrichment enrichment) {
 
         try {
-            emailContentService.updateStatusAndNote(emailContent, CLUSTER_ASSIGNMENT_STARTED, null);
+            updateStatus(emailContent, CLUSTER_ASSIGNMENT_STARTED);
 
             if (batchClusteringLock.isActive(emailContent.getGmailMailboxId())) {
                 log.info("Batch clustering active for mailbox [id={}] — pausing incremental assignment for emailContent [id={}]", emailContent.getGmailMailboxId(), emailContent.getId());
-                emailContentService.updateStatusAndNote(emailContent, CLUSTER_ASSIGNMENT_COMPLETED, null);
+                updateStatus(emailContent, CLUSTER_ASSIGNMENT_COMPLETED);
                 return;
             }
 
             List<Cluster> clusters = clusterService.findByMailboxId(emailContent.getGmailMailboxId());
             if (clusters.isEmpty()) {
                 log.info("No clusters for mailbox [id={}] — deferring assignment for emailContent [id={}]", emailContent.getGmailMailboxId(), emailContent.getId());
-                emailContentService.updateStatusAndNote(emailContent, CLUSTER_ASSIGNMENT_COMPLETED, null);
+                updateStatus(emailContent, CLUSTER_ASSIGNMENT_COMPLETED);
                 return;
             }
 
             if (enrichment.getEmbedding() == null) {
                 log.warn("No embedding on emailContent [id={}] — skipping incremental assignment", emailContent.getId());
-                emailContentService.updateStatusAndNote(emailContent, CLUSTER_ASSIGNMENT_FAILED, "No embedding found");
+                updateStatus(emailContent, CLUSTER_ASSIGNMENT_FAILED);
                 return;
             }
 
             Cluster bestCluster = findBestCluster(enrichment.getEmbedding(), clusters);
             if (bestCluster == null) {
                 log.warn("No cluster with a centroid found for mailbox [id={}]", emailContent.getGmailMailboxId());
-                emailContentService.updateStatusAndNote(emailContent, CLUSTER_ASSIGNMENT_FAILED, "No cluster centroid found");
+                updateStatus(emailContent, CLUSTER_ASSIGNMENT_FAILED);
                 return;
             }
 
             double similarity = cosineSimilarity(enrichment.getEmbedding(), bestCluster.getCentroid());
 
-            if (similarity < minSimilarityThreshold) {
-                log.info("EmailContent [id={}] similarity {} below threshold {} — deferring to batch", emailContent.getId(), String.format("%.4f", similarity), String.format("%.4f", minSimilarityThreshold));
-                emailContentService.updateStatusAndNote(emailContent, CLUSTER_ASSIGNMENT_COMPLETED, "similarity=" + String.format("%.4f", similarity));
+            if (similarity < clusteringProperties.minSimilarityThreshold()) {
+                log.info("EmailContent [id={}] similarity {} below threshold {} — deferring to batch", emailContent.getId(), String.format("%.4f", similarity), String.format("%.4f", clusteringProperties.minSimilarityThreshold()));
+                updateStatus(emailContent, CLUSTER_ASSIGNMENT_COMPLETED);
                 return;
             }
 
@@ -96,12 +96,12 @@ public class EmailClusteringService {
 
             clusterService.incrementEmailCount(bestCluster.getId());
 
-            emailContentService.updateStatusAndNote(emailContent, CLUSTER_ASSIGNMENT_COMPLETED, null);
+            updateStatus(emailContent, CLUSTER_ASSIGNMENT_COMPLETED);
             log.info("EmailContent [id={}] assigned to cluster [id={}, clusterIndex={}, similarity={}]", emailContent.getId(), bestCluster.getId(), bestCluster.getClusterIndex(), similarity);
 
         } catch (Exception e) {
-            log.error("Failed to assign cluster for emailContent [id={}]", emailContent.getId(), e);
-            emailContentService.updateStatusAndNote(emailContent, CLUSTER_ASSIGNMENT_FAILED, e.getMessage());
+            log.error("Failed to assign cluster for emailContent [id={}]: {}", emailContent.getId(), e.getMessage(), e);
+            updateStatus(emailContent, CLUSTER_ASSIGNMENT_FAILED);
             throw e;
         }
     }
@@ -130,5 +130,10 @@ public class EmailClusteringService {
         }
         if (normA == 0.0 || normB == 0.0) return 0.0;
         return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+    }
+
+    private void updateStatus(EmailContent emailContent, ProcessedStatus status) {
+        emailContent.setProcessedStatus(status);
+        emailContentService.save(emailContent);
     }
 }
