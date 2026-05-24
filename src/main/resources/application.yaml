@@ -37,6 +37,8 @@ spring:
       exchange: ${RABBITMQ_EMAIL_EVENT_EXCHANGE}
       sanitization-queue: ${RABBITMQ_EMAIL_SANITIZATION_QUEUE}
       sanitization-routing-key: ${RABBITMQ_EMAIL_SANITIZATION_ROUTING_KEY}
+      normalization-queue: ${RABBITMQ_EMAIL_NORMALIZATION_QUEUE}
+      normalization-routing-key: ${RABBITMQ_EMAIL_NORMALIZATION_ROUTING_KEY}
       embedding-queue: ${RABBITMQ_EMAIL_EMBEDDING_QUEUE}
       embedding-routing-key: ${RABBITMQ_EMAIL_EMBEDDING_ROUTING_KEY}
       clustering-queue: ${RABBITMQ_EMAIL_CLUSTERING_QUEUE}
@@ -58,6 +60,11 @@ embedding-provider:
   ollama-url: ${EMBEDDING_OLLAMA_URL}
   model: ${EMBEDDING_MODEL}
   max-chars: 4500
+
+llm-provider:
+  name: ${LLM_PROVIDER_NAME}
+  ollama-url: ${LLM_OLLAMA_URL}
+  model: ${LLM_MODEL}
 
 sanitization:
   quoted-text-patterns:

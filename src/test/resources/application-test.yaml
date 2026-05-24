@@ -25,6 +25,8 @@ spring:
       exchange: test-exchange
       sanitization-queue: test-sanitization-queue
       sanitization-routing-key: test.sanitization.key
+      normalization-queue: test-normalization-queue
+      normalization-routing-key: test.normalization.key
       embedding-queue: test-embedding-queue
       embedding-routing-key: test.embedding.key
       clustering-queue: test-clustering-queue
@@ -38,3 +40,8 @@ embedding-provider:
   name: ollama
   ollama-url: http://localhost:11434/api/embeddings
   model: test-model
+
+llm-provider:
+  name: ollama
+  ollama-url: http://localhost:11434/api/generate
+  model: test-llm-model

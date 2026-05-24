@@ -23,7 +23,8 @@ public class EmailClusteringPublisher {
     public void publishClusteringEvent(EmailContent emailContent) {
         EmailEvent event = new EmailEvent(emailContent.getId());
         rabbitTemplate.convertAndSend(properties.exchange(), properties.clusteringRoutingKey(), event);
-        emailContentService.updateStatusAndNote(emailContent, PUBLISHED_FOR_CLUSTER_ASSIGNMENT, null);
+        emailContent.setProcessedStatus(PUBLISHED_FOR_CLUSTER_ASSIGNMENT);
+        emailContentService.save(emailContent);
         log.debug("Published clustering event for emailContent [id={}]", emailContent.getId());
     }
 }

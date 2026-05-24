@@ -34,8 +34,8 @@ public class RabbitMQConfig {
         factory.setConnectionFactory(connectionFactory);
         factory.setMessageConverter(jacksonMessageConverter);
         factory.setPrefetchCount(10);
-        factory.setConcurrentConsumers(1);
-        factory.setMaxConcurrentConsumers(1);
+        factory.setConcurrentConsumers(4);
+        factory.setMaxConcurrentConsumers(8);
         factory.setDefaultRequeueRejected(false);
         factory.setAdviceChain(retryInterceptor);
         return factory;
@@ -73,6 +73,28 @@ public class RabbitMQConfig {
     @Bean
     public Binding sanitizationDeadLetterBinding(Queue sanitizationDeadLetterQueue, TopicExchange deadLetterExchange) {
         return bindToExchange(sanitizationDeadLetterQueue, deadLetterExchange, properties.sanitizationRoutingKey() + ".dlq");
+    }
+
+    // --- Normalization queue ---
+
+    @Bean
+    public Queue emailNormalizationQueue() {
+        return buildQueue(properties.normalizationQueue(), properties.normalizationRoutingKey());
+    }
+
+    @Bean
+    public Binding emailNormalizationBinding(Queue emailNormalizationQueue, TopicExchange emailEventExchange) {
+        return bindToExchange(emailNormalizationQueue, emailEventExchange, properties.normalizationRoutingKey());
+    }
+
+    @Bean
+    public Queue normalizationDeadLetterQueue() {
+        return buildDlq(properties.normalizationQueue());
+    }
+
+    @Bean
+    public Binding normalizationDeadLetterBinding(Queue normalizationDeadLetterQueue, TopicExchange deadLetterExchange) {
+        return bindToExchange(normalizationDeadLetterQueue, deadLetterExchange, properties.normalizationRoutingKey() + ".dlq");
     }
 
     // --- Embedding queue ---
