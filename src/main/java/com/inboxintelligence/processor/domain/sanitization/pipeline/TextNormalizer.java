@@ -13,7 +13,10 @@ public class TextNormalizer implements SanitizationStepProcessor {
     private static final Pattern UNICODE_SPACES = Pattern.compile("[\u00A0\u2000-\u200A\u202F\u205F\u3000]");
     private static final Pattern INVISIBLE_CHARS = Pattern.compile("[\u200B-\u200F\u00AD\u034F\u061C\uFEFF\u2060-\u2064]");
     private static final Pattern TRAILING_SPACES = Pattern.compile("(?m)[ \\t]+$");
-    private static final Pattern EXCESSIVE_NEWLINES = Pattern.compile("\n{3,}");
+    private static final Pattern URLS = Pattern.compile("https?://[^\\s)\\]]+");
+    private static final Pattern PIPE_ONLY_LINES = Pattern.compile("(?m)^[\\s|]+$");
+    private static final Pattern MULTI_SPACE = Pattern.compile("[ \\t]{2,}");
+    private static final Pattern EXCESSIVE_NEWLINES = Pattern.compile("\n{2,}");
 
     private static Map<String, String> buildReplacementMap() {
 
@@ -76,8 +79,11 @@ public class TextNormalizer implements SanitizationStepProcessor {
 
         result = UNICODE_SPACES.matcher(result).replaceAll(" ");
         result = INVISIBLE_CHARS.matcher(result).replaceAll("");
+        result = URLS.matcher(result).replaceAll("<url>");
+        result = PIPE_ONLY_LINES.matcher(result).replaceAll("");
+        result = MULTI_SPACE.matcher(result).replaceAll(" ");
         result = TRAILING_SPACES.matcher(result).replaceAll("");
-        result = EXCESSIVE_NEWLINES.matcher(result).replaceAll("\n\n");
+        result = EXCESSIVE_NEWLINES.matcher(result).replaceAll("\n");
 
         return result.strip();
     }
