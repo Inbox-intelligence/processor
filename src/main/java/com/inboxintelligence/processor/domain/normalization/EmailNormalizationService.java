@@ -134,10 +134,11 @@ public class EmailNormalizationService {
         if (StringUtils.hasText(emailContent.getFromAddress()))
             sb.append("[From: ").append(emailContent.getFromAddress()).append("] ");
         if (StringUtils.hasText(emailContent.getToAddress()))
-            sb.append("To: ").append(emailContent.getToAddress()).append("] ");
+            sb.append("[To: ").append(emailContent.getToAddress()).append("] ");
         if (StringUtils.hasText(emailContent.getSubject()))
-            sb.append("Subject: ").append(emailContent.getSubject()).append("] \n");
+            sb.append("[Subject: ").append(emailContent.getSubject()).append("] ");
 
+        sb.append("Summary: ");
         sb.append(body);
         return sb.toString();
     }
