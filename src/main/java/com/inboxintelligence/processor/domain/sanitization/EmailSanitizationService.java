@@ -8,13 +8,15 @@ import com.inboxintelligence.persistence.service.GmailMailboxService;
 import com.inboxintelligence.persistence.storage.EmailStorageProvider;
 import com.inboxintelligence.persistence.storage.EmailStorageProviderFactory;
 import com.inboxintelligence.processor.domain.sanitization.pipeline.ContentSanitizationPipelineRegistry;
-import com.inboxintelligence.processor.outbound.EmailEmbeddingPublisher;
+import com.inboxintelligence.processor.outbound.EmailNormalizationPublisher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import static com.inboxintelligence.persistence.model.ProcessedStatus.*;
@@ -24,8 +26,11 @@ import static com.inboxintelligence.persistence.model.ProcessedStatus.*;
 @RequiredArgsConstructor
 public class EmailSanitizationService {
 
+    private static final String HTML = "HTML";
+    private static final String TEXT = "TEXT";
+    private static final String JSON = "JSON";
 
-    private final EmailEmbeddingPublisher emailEmbeddingPublisher;
+    private final EmailNormalizationPublisher emailNormalizationPublisher;
     private final EmailContentService emailContentService;
     private final EmailAttachmentService emailAttachmentService;
     private final GmailMailboxService gmailMailboxService;
@@ -46,31 +51,35 @@ public class EmailSanitizationService {
 
         if (StringUtils.hasText(sanitizedContent)) {
             log.warn("EmailContent [id={}] already past sanitization (status={}) — skipping redelivery", emailContentId, emailContent.getProcessedStatus());
-            markStatusAndPublishForEmbedding(provider, emailContent);
+            markStatusAndPublishForNormalization(provider, emailContent);
         } else {
             invokeSanitization(provider, emailContent);
         }
-
     }
 
     private void invokeSanitization(EmailStorageProvider provider, EmailContent emailContent) {
 
         try {
+            updateStatus(emailContent, SANITIZATION_STARTED);
 
-            emailContentService.updateStatusAndNote(emailContent, SANITIZATION_STARTED, null);
-
-            String html = provider.readContent(emailContent.getBodyHtmlContentPath());
-            String body = provider.readContent(emailContent.getBodyContentPath());
-
-            String rawContent = StringUtils.hasText(html) ? html : StringUtils.hasText(body) ? body : "";
+            String rawContent = provider.readContent(emailContent.getRawContentPath());
 
             if (!StringUtils.hasText(rawContent)) {
-                log.warn("No raw content for email: {}", emailContent.getId());
-                emailContentService.updateStatusAndNote(emailContent, SANITIZATION_FAILED, "No raw content");
+                log.warn("No raw content for email [id={}, path={}]", emailContent.getId(), emailContent.getRawContentPath());
+                updateStatus(emailContent, SANITIZATION_FAILED);
                 return;
             }
 
+            String rawType = emailContent.getRawContentType();
             int originalLength = rawContent.length();
+
+            
+            if (!Set.of(HTML,TEXT).contains(rawType.toUpperCase(Locale.ROOT))){
+                log.warn("EmailContent [id={}] invalid rawContentType='{}'", emailContent.getId(), rawType);
+                updateStatus(emailContent, SANITIZATION_FAILED);
+                return;
+            }
+
             String cleanedText = pipelineRegistry.executeSanitizationPipeline(rawContent);
 
             if (cleanedText.length() < 20 && cleanedText.length() < originalLength * 0.1) {
@@ -78,7 +87,7 @@ public class EmailSanitizationService {
                 cleanedText = rawContent;
             }
 
-            log.info("Sanitized email [id={}, {} -> {} chars]", emailContent.getId(), originalLength, cleanedText.length());
+            log.info("Sanitized email [id={}, type={}, {} -> {} chars]", emailContent.getId(), rawType, originalLength, cleanedText.length());
 
             String email = gmailMailboxService.findById(emailContent.getGmailMailboxId())
                     .orElseThrow(() -> new IllegalStateException("Mailbox not found: " + emailContent.getGmailMailboxId()))
@@ -89,31 +98,14 @@ public class EmailSanitizationService {
 
             emailContent.setSanitizedContentPath(path);
             log.info("Sanitized content stored at: {} for email id: {}", path, emailContent.getId());
-            this.markStatusAndPublishForEmbedding(provider, emailContent);
-            log.info("EmailContent [id={}] sanitized and queued for embedding", emailContent.getId());
+            markStatusAndPublishForNormalization(provider, emailContent);
+            log.info("EmailContent [id={}] sanitized and queued for normalization", emailContent.getId());
 
         } catch (Exception e) {
-            log.error("Failed to process emailContent [id={}]", emailContent.getId(), e);
-            emailContentService.updateStatusAndNote(emailContent, SANITIZATION_FAILED, e.getMessage());
+            log.error("Failed to process emailContent [id={}]: {}", emailContent.getId(), e.getMessage(), e);
+            updateStatus(emailContent, SANITIZATION_FAILED);
             throw e;
         }
-    }
-
-    private void markStatusAndPublishForEmbedding(EmailStorageProvider provider, EmailContent emailContent) {
-
-        //Sanitized Content is always persisted rest is deleted
-        provider.deleteContent(emailContent.getRawMessagePath());
-        provider.deleteContent(emailContent.getBodyHtmlContentPath());
-        provider.deleteContent(emailContent.getBodyContentPath());
-
-        emailAttachmentService.deleteAllByEmailContentId(emailContent.getId(), provider);
-
-        emailContent.setRawMessagePath(null);
-        emailContent.setBodyHtmlContentPath(null);
-        emailContent.setBodyContentPath(null);
-        emailContentService.updateStatusAndNote(emailContent, SANITIZATION_COMPLETED, null);
-
-        emailEmbeddingPublisher.publishEmbeddingEvent(emailContent);
     }
 
     private String enrichSanitizedContent(EmailContent emailContent, String sanitizedBody) {
@@ -141,4 +133,19 @@ public class EmailSanitizationService {
         return sb.toString();
     }
 
+    private void markStatusAndPublishForNormalization(EmailStorageProvider provider, EmailContent emailContent) {
+
+        provider.deleteContent(emailContent.getRawContentPath());
+        emailAttachmentService.deleteAllByEmailContentId(emailContent.getId(), provider);
+
+        emailContent.setRawContentPath(null);
+        updateStatus(emailContent, SANITIZATION_COMPLETED);
+
+        emailNormalizationPublisher.publishNormalizationEvent(emailContent);
+    }
+
+    private void updateStatus(EmailContent emailContent, com.inboxintelligence.persistence.model.ProcessedStatus status) {
+        emailContent.setProcessedStatus(status);
+        emailContentService.save(emailContent);
+    }
 }
