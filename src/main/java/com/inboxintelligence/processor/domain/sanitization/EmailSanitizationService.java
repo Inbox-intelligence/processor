@@ -112,13 +112,6 @@ public class EmailSanitizationService {
 
         StringBuilder sb = new StringBuilder();
 
-        if (StringUtils.hasText(emailContent.getFromAddress()))
-            sb.append("From: ").append(emailContent.getFromAddress()).append("\n");
-        if (StringUtils.hasText(emailContent.getToAddress()))
-            sb.append("To: ").append(emailContent.getToAddress()).append("\n");
-        if (StringUtils.hasText(emailContent.getSubject()))
-            sb.append("Subject: ").append(emailContent.getSubject()).append("\n");
-
         List<String> attachmentNames = emailAttachmentService.findByEmailContentId(emailContent.getId())
                 .stream()
                 .filter(a -> !Boolean.TRUE.equals(a.getIsInline()))

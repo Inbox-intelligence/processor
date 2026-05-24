@@ -96,9 +96,10 @@ public class EmailNormalizationService {
                     .replace(EMAIL_PLACEHOLDER, promptInput);
 
             String generated = modelProvider.generate(prompt).trim();
-            String normalized = generated.length() > MAX_NORMALIZED_CHARS
-                    ? generated.substring(0, MAX_NORMALIZED_CHARS)
-                    : generated;
+            String prepended = prependHeaders(emailContent, generated);
+            String normalized = prepended.length() > MAX_NORMALIZED_CHARS
+                    ? prepended.substring(0, MAX_NORMALIZED_CHARS)
+                    : prepended;
 
             log.info("Normalized emailContent [id={}, {} -> {} chars]", emailContent.getId(), sanitizedContent.length(), normalized.length());
 
@@ -124,5 +125,20 @@ public class EmailNormalizationService {
     private void updateStatus(EmailContent emailContent, ProcessedStatus status) {
         emailContent.setProcessedStatus(status);
         emailContentService.save(emailContent);
+    }
+
+    private String prependHeaders(EmailContent emailContent, String body) {
+
+        StringBuilder sb = new StringBuilder();
+
+        if (StringUtils.hasText(emailContent.getFromAddress()))
+            sb.append("[From: ").append(emailContent.getFromAddress()).append("] ");
+        if (StringUtils.hasText(emailContent.getToAddress()))
+            sb.append("To: ").append(emailContent.getToAddress()).append("] ");
+        if (StringUtils.hasText(emailContent.getSubject()))
+            sb.append("Subject: ").append(emailContent.getSubject()).append("] \n");
+
+        sb.append(body);
+        return sb.toString();
     }
 }
