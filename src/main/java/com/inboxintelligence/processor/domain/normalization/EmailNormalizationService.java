@@ -33,7 +33,7 @@ public class EmailNormalizationService {
             Rewrite the email below as a dense, factual summary optimized for semantic search.
             Rules:
             - Maximum {{MAX_CHARS}} characters.
-            - Plain text only. No preamble, no markdown, no bullet points.
+            - Plain text only. No preamble, no markdown, no bullet points, no new-lines.
             - Preserve concrete entities (people, companies, products, dates, amounts, IDs).
             - Drop greetings, signatures, disclaimers, and pleasantries.
             - Output the summary ONLY - no additional text.
@@ -95,7 +95,7 @@ public class EmailNormalizationService {
                     .replace(MAX_CHARS_PLACEHOLDER, String.valueOf(MAX_NORMALIZED_CHARS))
                     .replace(EMAIL_PLACEHOLDER, promptInput);
 
-            String generated = modelProvider.generate(prompt).trim();
+            String generated = modelProvider.generate(prompt).trim().replace("\n", " ").replace("\r", " ");
             String prepended = prependHeaders(emailContent, generated);
             String normalized = prepended.length() > MAX_NORMALIZED_CHARS
                     ? prepended.substring(0, MAX_NORMALIZED_CHARS)
