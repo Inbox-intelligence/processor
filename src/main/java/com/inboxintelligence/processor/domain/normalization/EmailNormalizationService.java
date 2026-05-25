@@ -23,7 +23,7 @@ import static com.inboxintelligence.persistence.model.ProcessedStatus.*;
 @RequiredArgsConstructor
 public class EmailNormalizationService {
 
-    private static final int MAX_NORMALIZED_CHARS = 1000;
+    private static final int MAX_NORMALIZED_CHARS = 5000;
     private static final int MAX_PROMPT_INPUT_CHARS = 6000;
 
     private static final String EMAIL_PLACEHOLDER = "{{EMAIL}}";
