@@ -59,12 +59,24 @@ embedding-provider:
   name: ${EMBEDDING_PROVIDER_NAME}
   ollama-url: ${EMBEDDING_OLLAMA_URL}
   model: ${EMBEDDING_MODEL}
-  max-chars: 4500
+  max-chars: 2000
 
 llm-provider:
   name: ${LLM_PROVIDER_NAME}
   ollama-url: ${LLM_OLLAMA_URL}
   model: ${LLM_MODEL}
+
+resilience4j:
+  retry:
+    instances:
+      ollamaRetry:
+        max-attempts: 3
+        wait-duration: 2s
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        randomized-wait-factor: 0.5
+        retry-exceptions:
+          - com.inboxintelligence.processor.exception.RetryableOllamaException
 
 sanitization:
   quoted-text-patterns:

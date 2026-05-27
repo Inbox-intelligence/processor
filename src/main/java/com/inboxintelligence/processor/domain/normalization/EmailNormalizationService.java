@@ -1,8 +1,10 @@
 package com.inboxintelligence.processor.domain.normalization;
 
 import com.inboxintelligence.persistence.model.ProcessedStatus;
+import com.inboxintelligence.persistence.model.entity.EmailAttachment;
 import com.inboxintelligence.persistence.model.entity.EmailContent;
 import com.inboxintelligence.persistence.model.entity.EmailEnrichment;
+import com.inboxintelligence.persistence.service.EmailAttachmentService;
 import com.inboxintelligence.persistence.service.EmailContentService;
 import com.inboxintelligence.persistence.service.EmailEnrichmentService;
 import com.inboxintelligence.persistence.storage.EmailStorageProvider;
@@ -15,6 +17,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+
+import java.util.List;
 
 import static com.inboxintelligence.persistence.model.ProcessedStatus.*;
 
@@ -37,13 +41,13 @@ public class EmailNormalizationService {
             - Preserve concrete entities (people, companies, products, dates, amounts, IDs).
             - Drop greetings, signatures, disclaimers, and pleasantries.
             - Output the summary ONLY - no additional text.
-
             EMAIL:
             {{EMAIL}}
             """;
 
     private final EmailContentService emailContentService;
     private final EmailEnrichmentService emailEnrichmentService;
+    private final EmailAttachmentService emailAttachmentService;
     private final EmailStorageProviderFactory storageProviderFactory;
     private final ModelProviderFactory modelProviderFactory;
     private final LlmProviderProperties llmProviderProperties;
@@ -132,14 +136,22 @@ public class EmailNormalizationService {
         StringBuilder sb = new StringBuilder();
 
         if (StringUtils.hasText(emailContent.getFromAddress()))
-            sb.append("[From: ").append(emailContent.getFromAddress()).append("] ");
+            sb.append("From: ").append(emailContent.getFromAddress()).append("\n");
         if (StringUtils.hasText(emailContent.getToAddress()))
-            sb.append("[To: ").append(emailContent.getToAddress()).append("] ");
+            sb.append("To: ").append(emailContent.getToAddress()).append("\n");
         if (StringUtils.hasText(emailContent.getSubject()))
-            sb.append("[Subject: ").append(emailContent.getSubject()).append("] ");
+            sb.append("Subject: ").append(emailContent.getSubject()).append("\n");
 
-        sb.append("Summary: ");
-        sb.append(body);
+        List<String> attachmentNames = emailAttachmentService.findByEmailContentId(emailContent.getId())
+                .stream()
+                .filter(a -> !Boolean.TRUE.equals(a.getIsInline()))
+                .map(EmailAttachment::getFileName)
+                .toList();
+
+        if (!attachmentNames.isEmpty())
+            sb.append("Attachments: ").append(String.join(", ", attachmentNames)).append("\n");
+
+        sb.append("Summary: ").append(body);
         return sb.toString();
     }
 }

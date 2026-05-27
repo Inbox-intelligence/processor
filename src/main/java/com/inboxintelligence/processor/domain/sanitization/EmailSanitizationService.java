@@ -1,6 +1,5 @@
 package com.inboxintelligence.processor.domain.sanitization;
 
-import com.inboxintelligence.persistence.model.entity.EmailAttachment;
 import com.inboxintelligence.persistence.model.entity.EmailContent;
 import com.inboxintelligence.persistence.service.EmailAttachmentService;
 import com.inboxintelligence.persistence.service.EmailContentService;
@@ -14,10 +13,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.util.List;
 import java.util.Locale;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 import static com.inboxintelligence.persistence.model.ProcessedStatus.*;
 
@@ -73,28 +70,28 @@ public class EmailSanitizationService {
             String rawType = emailContent.getRawContentType();
             int originalLength = rawContent.length();
 
-            
-            if (!Set.of(HTML,TEXT).contains(rawType.toUpperCase(Locale.ROOT))){
+
+            if (!Set.of(HTML, TEXT).contains(rawType.toUpperCase(Locale.ROOT))) {
                 log.warn("EmailContent [id={}] invalid rawContentType='{}'", emailContent.getId(), rawType);
                 updateStatus(emailContent, SANITIZATION_FAILED);
                 return;
             }
 
-            String cleanedText = pipelineRegistry.executeSanitizationPipeline(rawContent);
+            String sanitizedContent = pipelineRegistry.executeSanitizationPipeline(rawContent);
 
-            if (cleanedText.length() < 20 && cleanedText.length() < originalLength * 0.1) {
-                log.warn("Pipeline removed too much content ({} -> {} chars), falling back to original", originalLength, cleanedText.length());
-                cleanedText = rawContent;
+            if (sanitizedContent.length() < 20 && sanitizedContent.length() < originalLength * 0.1) {
+                log.warn("Pipeline removed too much content ({} -> {} chars), falling back to original", originalLength, sanitizedContent.length());
+                sanitizedContent = rawContent;
             }
 
-            log.info("Sanitized email [id={}, type={}, {} -> {} chars]", emailContent.getId(), rawType, originalLength, cleanedText.length());
+            log.info("Sanitized email [id={}, type={}, {} -> {} chars]", emailContent.getId(), rawType, originalLength, sanitizedContent.length());
 
             String email = gmailMailboxService.findById(emailContent.getGmailMailboxId())
                     .orElseThrow(() -> new IllegalStateException("Mailbox not found: " + emailContent.getGmailMailboxId()))
                     .getEmailAddress();
 
-            String enrichedContent = enrichSanitizedContent(emailContent, cleanedText);
-            String path = provider.writeContent(email, emailContent.getMessageId(), "processed_content.txt", enrichedContent);
+
+            String path = provider.writeContent(email, emailContent.getMessageId(), "processed_content.txt", sanitizedContent);
 
             emailContent.setSanitizedContentPath(path);
             log.info("Sanitized content stored at: {} for email id: {}", path, emailContent.getId());
@@ -106,24 +103,6 @@ public class EmailSanitizationService {
             updateStatus(emailContent, SANITIZATION_FAILED);
             throw e;
         }
-    }
-
-    private String enrichSanitizedContent(EmailContent emailContent, String sanitizedBody) {
-
-        StringBuilder sb = new StringBuilder();
-
-        List<String> attachmentNames = emailAttachmentService.findByEmailContentId(emailContent.getId())
-                .stream()
-                .filter(a -> !Boolean.TRUE.equals(a.getIsInline()))
-                .map(EmailAttachment::getFileName)
-                .collect(Collectors.toList());
-
-        if (!attachmentNames.isEmpty())
-            sb.append("Attachments: ").append(String.join(", ", attachmentNames)).append("\n");
-
-        sb.append("Content: ").append(sanitizedBody);
-
-        return sb.toString();
     }
 
     private void markStatusAndPublishForNormalization(EmailStorageProvider provider, EmailContent emailContent) {
