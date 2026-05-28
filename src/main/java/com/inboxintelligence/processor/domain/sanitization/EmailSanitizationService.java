@@ -16,7 +16,7 @@ import org.springframework.util.StringUtils;
 import java.util.Locale;
 import java.util.Set;
 
-import static com.inboxintelligence.persistence.model.ProcessedStatus.*;
+import static com.inboxintelligence.persistence.model.enums.ProcessedStatus.*;
 
 @Slf4j
 @Service
@@ -116,7 +116,7 @@ public class EmailSanitizationService {
         emailNormalizationPublisher.publishNormalizationEvent(emailContent);
     }
 
-    private void updateStatus(EmailContent emailContent, com.inboxintelligence.persistence.model.ProcessedStatus status) {
+    private void updateStatus(EmailContent emailContent, com.inboxintelligence.persistence.model.enums.ProcessedStatus status) {
         emailContent.setProcessedStatus(status);
         emailContentService.save(emailContent);
     }

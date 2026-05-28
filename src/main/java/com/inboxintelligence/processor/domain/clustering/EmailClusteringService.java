@@ -1,7 +1,7 @@
 package com.inboxintelligence.processor.domain.clustering;
 
-import com.inboxintelligence.persistence.model.ClusterAssignmentType;
-import com.inboxintelligence.persistence.model.ProcessedStatus;
+import com.inboxintelligence.persistence.model.enums.ClusterAssignmentType;
+import com.inboxintelligence.persistence.model.enums.ProcessedStatus;
 import com.inboxintelligence.persistence.model.entity.Cluster;
 import com.inboxintelligence.persistence.model.entity.EmailContent;
 import com.inboxintelligence.persistence.model.entity.EmailEnrichment;
@@ -15,7 +15,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 
-import static com.inboxintelligence.persistence.model.ProcessedStatus.*;
+import static com.inboxintelligence.persistence.model.enums.ProcessedStatus.*;
 
 @Slf4j
 @Service

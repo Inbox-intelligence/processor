@@ -1,6 +1,6 @@
 package com.inboxintelligence.processor.domain.embedding;
 
-import com.inboxintelligence.persistence.model.ProcessedStatus;
+import com.inboxintelligence.persistence.model.enums.ProcessedStatus;
 import com.inboxintelligence.persistence.model.entity.EmailContent;
 import com.inboxintelligence.persistence.model.entity.EmailEnrichment;
 import com.inboxintelligence.persistence.service.EmailContentService;
@@ -14,7 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import static com.inboxintelligence.persistence.model.ProcessedStatus.*;
+import static com.inboxintelligence.persistence.model.enums.ProcessedStatus.*;
 
 @Slf4j
 @Service

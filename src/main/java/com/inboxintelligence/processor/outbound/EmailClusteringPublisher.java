@@ -9,7 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Component;
 
-import static com.inboxintelligence.persistence.model.ProcessedStatus.PUBLISHED_FOR_CLUSTER_ASSIGNMENT;
+import static com.inboxintelligence.persistence.model.enums.ProcessedStatus.PUBLISHED_FOR_CLUSTER_ASSIGNMENT;
 
 @Slf4j
 @Component
