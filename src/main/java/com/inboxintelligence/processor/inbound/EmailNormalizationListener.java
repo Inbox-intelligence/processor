@@ -16,7 +16,7 @@ public class EmailNormalizationListener {
 
     @RabbitListener(queues = "#{@emailNormalizationQueue.name}")
     public void handleEmailNormalizationEvent(EmailEvent event) {
-        log.info("Received EmailNormalizationEvent for emailContentId: {}", event.emailContentId());
+        log.debug("Received EmailNormalizationEvent for emailContentId: {}", event.emailContentId());
         emailNormalizationService.normalizeEmail(event.emailContentId());
     }
 }

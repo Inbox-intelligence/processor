@@ -22,7 +22,6 @@ public class TextNormalizer implements SanitizationStepProcessor {
 
         LinkedHashMap<String, String> map = new LinkedHashMap<>();
 
-        // Quotes: ' ' ‚ ‹ › → '    " " „ « » → "
         map.put("\u2018", "'");
         map.put("\u2019", "'");
         map.put("\u201A", "'");
@@ -33,31 +32,20 @@ public class TextNormalizer implements SanitizationStepProcessor {
         map.put("\u201E", "\"");
         map.put("\u00AB", "\"");
         map.put("\u00BB", "\"");
-
-        // Dashes: – — ― ‒ ‐ ‑ → -
         map.put("\u2013", "-");
         map.put("\u2014", "-");
         map.put("\u2015", "-");
         map.put("\u2012", "-");
         map.put("\u2010", "-");
-        map.put("\u2011", "-");
-
-        // Bullets: • ‣ ◦ ▪ ● ⁃ → -
         map.put("\u2022", "-");
         map.put("\u2023", "-");
         map.put("\u25E6", "-");
         map.put("\u25AA", "-");
         map.put("\u25CF", "-");
-        map.put("\u2043", "-");
-
-        // Arrows: → ← ↔ ⇒ ⇐
         map.put("\u2192", "->");
         map.put("\u2190", "<-");
         map.put("\u2194", "<->");
         map.put("\u21D2", "=>");
-        map.put("\u21D0", "<=");
-
-        // Symbols: … © ® ™ ° × ÷
         map.put("\u2026", "...");
         map.put("\u00A9", "(c)");
         map.put("\u00AE", "(R)");

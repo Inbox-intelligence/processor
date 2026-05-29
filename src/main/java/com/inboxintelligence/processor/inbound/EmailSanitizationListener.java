@@ -16,7 +16,7 @@ public class EmailSanitizationListener {
 
     @RabbitListener(queues = "#{@emailSanitizationQueue.name}")
     public void handleEmailProcessedEvent(EmailEvent event) {
-        log.info("Received EmailEvent for emailContentId: {}", event.emailContentId());
+        log.debug("Received EmailEvent for emailContentId: {}", event.emailContentId());
         emailSanitizationService.sanitizeEmail(event.emailContentId());
     }
 }

@@ -16,7 +16,7 @@ public class EmailEmbeddingListener {
 
     @RabbitListener(queues = "#{@emailEmbeddingQueue.name}")
     public void handleEmailSanitizedEvent(EmailEvent event) {
-        log.info("Received EmailSanitizedEvent for emailContentId: {}", event.emailContentId());
+        log.debug("Received EmailSanitizedEvent for emailContentId: {}", event.emailContentId());
         emailEmbeddingService.generateEmbedding(event.emailContentId());
     }
 }

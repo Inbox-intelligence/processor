@@ -38,8 +38,11 @@ public class EmailNormalizationService {
             Rules:
             - Maximum {{MAX_CHARS}} characters.
             - Plain text only. No preamble, no markdown, no bullet points, no new-lines.
+            - Use ONLY information actually present in the email. Do NOT invent, infer, or speculate.
+            - Do NOT describe the email itself or how it was generated. Summarise its CONTENT.
             - Preserve concrete entities (people, companies, products, dates, amounts, IDs).
-            - Drop greetings, signatures, disclaimers, and pleasantries.
+            - Drop greetings, signatures, disclaimers, pleasantries, and tracking/unsubscribe links.
+            - If the email body is empty, gibberish, or has no meaningful content, reply with exactly: NO_CONTENT
             - Output the summary ONLY - no additional text.
             EMAIL:
             {{EMAIL}}
@@ -55,7 +58,7 @@ public class EmailNormalizationService {
 
     public void normalizeEmail(Long emailContentId) {
 
-        log.info("Starting normalization for emailContent id: {}", emailContentId);
+        log.debug("Starting normalization for emailContent id: {}", emailContentId);
 
         EmailContent emailContent = emailContentService
                 .findById(emailContentId)
@@ -86,8 +89,8 @@ public class EmailNormalizationService {
             String sanitizedContent = storageProvider.readContent(emailContent.getSanitizedContentPath());
 
             if (!StringUtils.hasText(sanitizedContent)) {
-                log.warn("No sanitized content for emailContent [id={}], marking failed", emailContent.getId());
                 updateStatus(emailContent, NORMALIZATION_FAILED);
+                log.debug("EmailContent [id={}] failure persisted (status=NORMALIZATION_FAILED)", emailContent.getId());
                 return;
             }
 
@@ -100,12 +103,23 @@ public class EmailNormalizationService {
                     .replace(EMAIL_PLACEHOLDER, promptInput);
 
             String generated = modelProvider.generate(prompt).trim().replace("\n", " ").replace("\r", " ");
+
+            String noContentMarker = generated.toUpperCase().replaceAll("[^A-Z]", "");
+            if (generated.isEmpty() || "NOCONTENT".equals(noContentMarker)) {
+                log.warn("Normalization rejected by LLM [id={}, sanitizedChars={}, llmResponse=\"{}\", inputPreview=\"{}\"] — marking failed",
+                        emailContent.getId(),
+                        sanitizedContent.length(),
+                        generated.isEmpty() ? "<empty>" : generated,
+                        preview(promptInput, 120));
+                updateStatus(emailContent, NORMALIZATION_FAILED);
+                log.debug("EmailContent [id={}] failure persisted (status=NORMALIZATION_FAILED)", emailContent.getId());
+                return;
+            }
+
             String prepended = prependHeaders(emailContent, generated);
             String normalized = prepended.length() > MAX_NORMALIZED_CHARS
                     ? prepended.substring(0, MAX_NORMALIZED_CHARS)
                     : prepended;
-
-            log.info("Normalized emailContent [id={}, {} -> {} chars]", emailContent.getId(), sanitizedContent.length(), normalized.length());
 
             enrichment.setGmailMailboxId(emailContent.getGmailMailboxId());
             enrichment.setEmailContentId(emailContent.getId());
@@ -114,10 +128,9 @@ public class EmailNormalizationService {
             emailEnrichmentService.save(enrichment);
 
             updateStatus(emailContent, NORMALIZATION_COMPLETED);
-            log.info("EmailContent [id={}] normalization persisted [model={}]", emailContent.getId(), llmProviderProperties.model());
+            log.info("Normalized [id={}, {} -> {} chars, model={}]", emailContent.getId(), sanitizedContent.length(), normalized.length(), llmProviderProperties.model());
 
             emailEmbeddingPublisher.publishEmbeddingEvent(emailContent);
-            log.info("EmailContent [id={}] queued for embedding", emailContent.getId());
 
         } catch (Exception e) {
             log.error("Failed to normalize emailContent [id={}]: {}", emailContent.getId(), e.getMessage(), e);
@@ -153,5 +166,11 @@ public class EmailNormalizationService {
 
         sb.append("Summary: ").append(body);
         return sb.toString();
+    }
+
+    private static String preview(String s, int max) {
+        if (s == null) return "<null>";
+        String oneLine = s.replace("\n", "\\n").replace("\r", "\\r");
+        return oneLine.length() > max ? oneLine.substring(0, max) + "…" : oneLine;
     }
 }

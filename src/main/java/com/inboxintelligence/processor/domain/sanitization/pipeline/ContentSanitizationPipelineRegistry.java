@@ -40,15 +40,12 @@ public class ContentSanitizationPipelineRegistry {
         for (SanitizationStepProcessor step : sanitizationPipeline) {
             if (StringUtils.hasText(content)) {
                 try {
-                    String before = content;
                     content = step.process(content);
-                    log.debug("{} : {} -> {} chars", step.getClass().getSimpleName(), before.length(), content.length());
                 } catch (Exception e) {
                     throw new IllegalStateException("Failed at step: " + step.getClass().getSimpleName(), e);
                 }
             }
         }
-
         return content;
     }
 }

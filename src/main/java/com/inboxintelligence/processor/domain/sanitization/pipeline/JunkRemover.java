@@ -64,7 +64,7 @@ public class JunkRemover implements SanitizationStepProcessor {
         }
 
         if (earliestMatch < content.length()) {
-            log.debug("Quoted text detected at position {}", earliestMatch);
+            log.trace("Quoted text detected at position {}", earliestMatch);
             return content.substring(0, earliestMatch);
         }
 
@@ -79,7 +79,7 @@ public class JunkRemover implements SanitizationStepProcessor {
 
         for (int i = lines.length - 1; i >= searchFrom; i--) {
             if (matchesSignaturePattern(lines[i]) || matchesSignOffPhrase(lines[i])) {
-                log.debug("Signature/sign-off detected at line {}", i);
+                log.trace("Signature/sign-off detected at line {}", i);
                 return String.join("\n", Arrays.copyOfRange(lines, 0, i));
             }
         }
@@ -112,7 +112,7 @@ public class JunkRemover implements SanitizationStepProcessor {
                 .trim();
 
         if (collapsed.length() < content.length()) {
-            log.debug("Whitespace collapsed [{} -> {} chars]", content.length(), collapsed.length());
+            log.trace("Whitespace collapsed [{} -> {} chars]", content.length(), collapsed.length());
         }
         return collapsed;
     }
@@ -136,7 +136,7 @@ public class JunkRemover implements SanitizationStepProcessor {
         }
 
         if (removed > 0) {
-            log.debug("Removed {} disclaimer paragraph(s)", removed);
+            log.trace("Removed {} disclaimer paragraph(s)", removed);
         }
 
         if (paragraphs.isEmpty()) {

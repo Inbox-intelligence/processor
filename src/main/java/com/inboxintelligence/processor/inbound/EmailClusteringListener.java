@@ -16,7 +16,7 @@ public class EmailClusteringListener {
 
     @RabbitListener(queues = "#{@emailClusteringQueue.name}")
     public void handleEmbeddingGeneratedEvent(EmailEvent event) {
-        log.info("Received clustering event for emailContentId: {}", event.emailContentId());
+        log.debug("Received clustering event for emailContentId: {}", event.emailContentId());
         emailClusteringService.assignCluster(event.emailContentId());
     }
 }

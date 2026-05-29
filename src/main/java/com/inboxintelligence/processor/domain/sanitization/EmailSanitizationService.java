@@ -36,7 +36,7 @@ public class EmailSanitizationService {
 
     public void sanitizeEmail(Long emailContentId) {
 
-        log.info("Starting sanitization for email id: {}", emailContentId);
+        log.debug("Starting sanitization for email id: {}", emailContentId);
 
         EmailStorageProvider provider = storageProviderFactory.getProvider();
 
@@ -79,12 +79,16 @@ public class EmailSanitizationService {
 
             String sanitizedContent = pipelineRegistry.executeSanitizationPipeline(rawContent);
 
-            if (sanitizedContent.length() < 20 && sanitizedContent.length() < originalLength * 0.1) {
-                log.warn("Pipeline removed too much content ({} -> {} chars), falling back to original", originalLength, sanitizedContent.length());
+            boolean tooFewChars = sanitizedContent.length() < 20;
+            boolean severeReduction = originalLength >= 100 && sanitizedContent.length() < originalLength * 0.1;
+
+            if (tooFewChars || severeReduction) {
+                long pctRemoved = Math.round(100.0 * (1.0 - (double) sanitizedContent.length() / Math.max(1, originalLength)));
+                log.warn("Sanitization left too little content [id={}, {} -> {} chars, {}% removed] — falling back to raw", emailContent.getId(), originalLength, sanitizedContent.length(), pctRemoved);
                 sanitizedContent = rawContent;
             }
 
-            log.info("Sanitized email [id={}, type={}, {} -> {} chars]", emailContent.getId(), rawType, originalLength, sanitizedContent.length());
+            log.info("Sanitized [id={}, {}, {} -> {} chars]", emailContent.getId(), rawType, originalLength, sanitizedContent.length());
 
             String email = gmailMailboxService.findById(emailContent.getGmailMailboxId())
                     .orElseThrow(() -> new IllegalStateException("Mailbox not found: " + emailContent.getGmailMailboxId()))
@@ -94,9 +98,8 @@ public class EmailSanitizationService {
             String path = provider.writeContent(email, emailContent.getMessageId(), "processed_content.txt", sanitizedContent);
 
             emailContent.setSanitizedContentPath(path);
-            log.info("Sanitized content stored at: {} for email id: {}", path, emailContent.getId());
+            log.debug("Sanitized content stored at {} [id={}]", path, emailContent.getId());
             markStatusAndPublishForNormalization(provider, emailContent);
-            log.info("EmailContent [id={}] sanitized and queued for normalization", emailContent.getId());
 
         } catch (Exception e) {
             log.error("Failed to process emailContent [id={}]: {}", emailContent.getId(), e.getMessage(), e);

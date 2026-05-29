@@ -29,7 +29,7 @@ public class EmailEmbeddingService {
 
     public void generateEmbedding(Long emailContentId) {
 
-        log.info("Starting embedding for emailContent id: {}", emailContentId);
+        log.debug("Starting embedding for emailContent id: {}", emailContentId);
 
         EmailContent emailContent = emailContentService
                 .findById(emailContentId)
@@ -63,7 +63,6 @@ public class EmailEmbeddingService {
             }
 
             float[] embedding = modelProvider.generateEmbedding(normalizedContent);
-            log.info("EmailContent [id={}] embedding generated [dimensions={}]", emailContent.getId(), embedding.length);
 
             enrichment.setGmailMailboxId(emailContent.getGmailMailboxId());
             enrichment.setEmailContentId(emailContent.getId());
@@ -72,10 +71,9 @@ public class EmailEmbeddingService {
             emailEnrichmentService.save(enrichment);
 
             updateStatus(emailContent, EMBEDDING_GENERATED);
-            log.info("EmailContent [id={}] embedding persisted [model={}]", emailContent.getId(), embeddingProviderProperties.model());
+            log.info("Embedded [id={}, dims={}, model={}]", emailContent.getId(), embedding.length, embeddingProviderProperties.model());
 
             emailClusteringPublisher.publishClusteringEvent(emailContent);
-            log.info("EmailContent [id={}] queued for cluster assignment", emailContent.getId());
 
         } catch (Exception e) {
             log.error("Failed to embed emailContent [id={}]: {}", emailContent.getId(), e.getMessage(), e);

@@ -30,7 +30,7 @@ public class EmailClusteringService {
 
     public void assignCluster(Long emailContentId) {
 
-        log.info("Assigning cluster for emailContent id: {}", emailContentId);
+        log.debug("Assigning cluster for emailContent id: {}", emailContentId);
 
         EmailContent emailContent = emailContentService
                 .findById(emailContentId)
@@ -61,7 +61,7 @@ public class EmailClusteringService {
 
             List<Cluster> clusters = clusterService.findByMailboxId(emailContent.getGmailMailboxId());
             if (clusters.isEmpty()) {
-                log.info("No clusters for mailbox [id={}] — deferring assignment for emailContent [id={}]", emailContent.getGmailMailboxId(), emailContent.getId());
+                log.debug("No clusters for mailbox [id={}] — deferring [emailContentId={}]", emailContent.getGmailMailboxId(), emailContent.getId());
                 updateStatus(emailContent, CLUSTER_ASSIGNMENT_COMPLETED);
                 return;
             }
