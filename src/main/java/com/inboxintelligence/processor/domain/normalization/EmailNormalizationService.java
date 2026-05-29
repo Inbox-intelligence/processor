@@ -9,7 +9,7 @@ import com.inboxintelligence.persistence.service.EmailContentService;
 import com.inboxintelligence.persistence.service.EmailEnrichmentService;
 import com.inboxintelligence.persistence.storage.EmailStorageProvider;
 import com.inboxintelligence.persistence.storage.EmailStorageProviderFactory;
-import com.inboxintelligence.processor.config.LlmProviderProperties;
+import com.inboxintelligence.processor.config.ModelProviderProperties;
 import com.inboxintelligence.processor.domain.model.factory.ModelProvider;
 import com.inboxintelligence.processor.domain.model.factory.ModelProviderFactory;
 import com.inboxintelligence.processor.outbound.EmailEmbeddingPublisher;
@@ -53,7 +53,7 @@ public class EmailNormalizationService {
     private final EmailAttachmentService emailAttachmentService;
     private final EmailStorageProviderFactory storageProviderFactory;
     private final ModelProviderFactory modelProviderFactory;
-    private final LlmProviderProperties llmProviderProperties;
+    private final ModelProviderProperties modelProviderProperties;
     private final EmailEmbeddingPublisher emailEmbeddingPublisher;
 
     public void normalizeEmail(Long emailContentId) {
@@ -128,7 +128,7 @@ public class EmailNormalizationService {
             emailEnrichmentService.save(enrichment);
 
             updateStatus(emailContent, NORMALIZATION_COMPLETED);
-            log.info("Normalized [id={}, {} -> {} chars, model={}]", emailContent.getId(), sanitizedContent.length(), normalized.length(), llmProviderProperties.model());
+            log.info("Normalized [id={}, {} -> {} chars, model={}]", emailContent.getId(), sanitizedContent.length(), normalized.length(), modelProviderProperties.ollama().llm().modelName());
 
             emailEmbeddingPublisher.publishEmbeddingEvent(emailContent);
 

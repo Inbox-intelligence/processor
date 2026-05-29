@@ -1,6 +1,6 @@
 package com.inboxintelligence.processor.domain.model.factory;
 
-import com.inboxintelligence.processor.config.LlmProviderProperties;
+import com.inboxintelligence.processor.config.ModelProviderProperties;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -16,11 +16,11 @@ public class ModelProviderFactory {
 
     private final ModelProvider activeProvider;
 
-    public ModelProviderFactory(LlmProviderProperties properties, Map<String, ModelProvider> modelProviderBeanMap) {
+    public ModelProviderFactory(ModelProviderProperties properties, Map<String, ModelProvider> modelProviderBeanMap) {
 
         String beanName = DEFAULT_PROVIDER_BEAN;
-        if (StringUtils.hasText(properties.name())) {
-            beanName = properties.name().toLowerCase(Locale.ROOT) + "ModelProvider";
+        if (StringUtils.hasText(properties.llmProviderName())) {
+            beanName = properties.llmProviderName().toLowerCase(Locale.ROOT) + "ModelProvider";
         }
 
         ModelProvider provider = modelProviderBeanMap.get(beanName);
@@ -31,7 +31,7 @@ public class ModelProviderFactory {
         }
 
         if (provider == null) {
-            throw new IllegalStateException("No ModelProvider available. Configured: '%s'. Available: %s".formatted(properties.name(), modelProviderBeanMap.keySet()));
+            throw new IllegalStateException("No ModelProvider available. Configured: '%s'. Available: %s".formatted(properties.llmProviderName(), modelProviderBeanMap.keySet()));
         }
 
         this.activeProvider = provider;

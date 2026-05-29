@@ -5,7 +5,7 @@ import com.inboxintelligence.persistence.model.entity.EmailContent;
 import com.inboxintelligence.persistence.model.entity.EmailEnrichment;
 import com.inboxintelligence.persistence.service.EmailContentService;
 import com.inboxintelligence.persistence.service.EmailEnrichmentService;
-import com.inboxintelligence.processor.config.EmbeddingProviderProperties;
+import com.inboxintelligence.processor.config.ModelProviderProperties;
 import com.inboxintelligence.processor.domain.model.factory.ModelProvider;
 import com.inboxintelligence.processor.domain.model.factory.ModelProviderFactory;
 import com.inboxintelligence.processor.outbound.EmailClusteringPublisher;
@@ -24,7 +24,7 @@ public class EmailEmbeddingService {
     private final EmailContentService emailContentService;
     private final EmailEnrichmentService emailEnrichmentService;
     private final ModelProviderFactory modelProviderFactory;
-    private final EmbeddingProviderProperties embeddingProviderProperties;
+    private final ModelProviderProperties modelProviderProperties;
     private final EmailClusteringPublisher emailClusteringPublisher;
 
     public void generateEmbedding(Long emailContentId) {
@@ -71,7 +71,7 @@ public class EmailEmbeddingService {
             emailEnrichmentService.save(enrichment);
 
             updateStatus(emailContent, EMBEDDING_GENERATED);
-            log.info("Embedded [id={}, dims={}, model={}]", emailContent.getId(), embedding.length, embeddingProviderProperties.model());
+            log.info("Embedded [id={}, dims={}, model={}]", emailContent.getId(), embedding.length, modelProviderProperties.ollama().embedding().modelName());
 
             emailClusteringPublisher.publishClusteringEvent(emailContent);
 
