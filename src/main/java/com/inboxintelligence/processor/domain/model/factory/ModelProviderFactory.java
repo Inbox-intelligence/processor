@@ -14,31 +14,41 @@ public class ModelProviderFactory {
 
     private static final String DEFAULT_PROVIDER_BEAN = "ollamaModelProvider";
 
-    private final ModelProvider activeProvider;
+    private final ModelProvider llmProvider;
+    private final ModelProvider embeddingProvider;
 
     public ModelProviderFactory(ModelProviderProperties properties, Map<String, ModelProvider> modelProviderBeanMap) {
+        this.llmProvider = resolve("llm", properties.llmProviderName(), modelProviderBeanMap);
+        this.embeddingProvider = resolve("embedding", properties.embeddingProviderName(), modelProviderBeanMap);
 
-        String beanName = DEFAULT_PROVIDER_BEAN;
-        if (StringUtils.hasText(properties.llmProviderName())) {
-            beanName = properties.llmProviderName().toLowerCase(Locale.ROOT) + "ModelProvider";
-        }
-
-        ModelProvider provider = modelProviderBeanMap.get(beanName);
-
-        if (provider == null) {
-            log.warn("Model provider '{}' not found. Falling back to default: {}", beanName, DEFAULT_PROVIDER_BEAN);
-            provider = modelProviderBeanMap.get(DEFAULT_PROVIDER_BEAN);
-        }
-
-        if (provider == null) {
-            throw new IllegalStateException("No ModelProvider available. Configured: '%s'. Available: %s".formatted(properties.llmProviderName(), modelProviderBeanMap.keySet()));
-        }
-
-        this.activeProvider = provider;
-        log.info("Active ModelProvider: {}", provider.getClass().getSimpleName());
+        log.info("Active LLM provider: {} | embedding provider: {}",
+                llmProvider.getClass().getSimpleName(),
+                embeddingProvider.getClass().getSimpleName());
     }
 
-    public ModelProvider getProvider() {
-        return activeProvider;
+    private static ModelProvider resolve(String role, String configuredName, Map<String, ModelProvider> beans) {
+        String beanName = DEFAULT_PROVIDER_BEAN;
+        if (StringUtils.hasText(configuredName)) {
+            beanName = configuredName.toLowerCase(Locale.ROOT) + "ModelProvider";
+        }
+
+        ModelProvider provider = beans.get(beanName);
+        if (provider == null) {
+            log.warn("Model provider '{}' for role '{}' not found. Falling back to default: {}", beanName, role, DEFAULT_PROVIDER_BEAN);
+            provider = beans.get(DEFAULT_PROVIDER_BEAN);
+        }
+        if (provider == null) {
+            throw new IllegalStateException("No ModelProvider available for role '%s'. Configured: '%s'. Available: %s"
+                    .formatted(role, configuredName, beans.keySet()));
+        }
+        return provider;
+    }
+
+    public ModelProvider getLlmProvider() {
+        return llmProvider;
+    }
+
+    public ModelProvider getEmbeddingProvider() {
+        return embeddingProvider;
     }
 }

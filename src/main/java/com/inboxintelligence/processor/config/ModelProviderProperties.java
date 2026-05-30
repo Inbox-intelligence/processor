@@ -30,9 +30,19 @@ public record ModelProviderProperties(
     public record Bedrock(
             String url,
             String apiKey,
-            String modelName,
-            Integer dimensions,
-            Boolean normalize
+            Embedding embedding,
+            Llm llm
     ) {
+        public record Embedding(
+                String modelName,
+                Integer dimensions,
+                Boolean normalize
+        ) {
+        }
+
+        public record Llm(
+                String modelName
+        ) {
+        }
     }
 }

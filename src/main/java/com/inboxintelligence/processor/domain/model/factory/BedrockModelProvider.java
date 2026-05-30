@@ -12,9 +12,8 @@ import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
+import java.net.URI;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -23,14 +22,13 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class BedrockModelProvider implements ModelProvider {
 
-    private static final ParameterizedTypeReference<Map<String, Object>> CONVERSE_RESPONSE_TYPE =
-            new ParameterizedTypeReference<>() {};
+    private static final ParameterizedTypeReference<Map<String, Object>> CONVERSE_RESPONSE_TYPE = new ParameterizedTypeReference<>() {
+    };
+    private static final ParameterizedTypeReference<Map<String, Object>> EMBED_RESPONSE_TYPE = new ParameterizedTypeReference<>() {
+    };
 
-    private static final ParameterizedTypeReference<Map<String, Object>> EMBED_RESPONSE_TYPE =
-            new ParameterizedTypeReference<>() {};
-
-    private static final double DEFAULT_TEMPERATURE = 0.1;
-    private static final int DEFAULT_MAX_OUTPUT_TOKENS = 1536;
+    private static final double DEFAULT_TEMPERATURE = 0.0;
+    private static final int DEFAULT_MAX_OUTPUT_TOKENS = 512;
     private static final int MAX_PROMPT_CHARS = 24_000;
     private static final int DEFAULT_EMBEDDING_DIMENSIONS = 1024;
     private static final boolean DEFAULT_EMBEDDING_NORMALIZE = true;
@@ -40,30 +38,35 @@ public class BedrockModelProvider implements ModelProvider {
 
     @Override
     @Retry(name = "aiRetry")
-    public String generate(String prompt) {
+    public String invokeLlm(String systemPrompt, String prompt) {
 
         if (prompt == null || prompt.isBlank()) {
-            throw new IllegalArgumentException("Bedrock generate called with empty prompt");
+            throw new IllegalArgumentException("Bedrock invokeLlm called with empty prompt");
         }
         if (prompt.length() > MAX_PROMPT_CHARS) {
             throw new IllegalArgumentException("Bedrock prompt too large: " + prompt.length() + " chars (max " + MAX_PROMPT_CHARS + ")");
         }
 
-        String modelId = modelProperties.bedrock().modelName();
-        String url = buildModelUrl(modelId, "converse");
+        String modelId = modelProperties.bedrock().llm().modelName();
+        URI url = buildModelUri(modelId, "converse");
 
-        log.debug("Requesting LLM generation from Bedrock [model={}, promptLength={}]", modelId, prompt.length());
+        log.debug("Requesting LLM generation from Bedrock [model={}, hasSystem={}, promptLength={}]",
+                modelId,
+                systemPrompt != null && !systemPrompt.isBlank(),
+                prompt.length());
 
-        Map<String, Object> body = Map.of(
-                "messages", List.of(Map.of(
-                        "role", "user",
-                        "content", List.of(Map.of("text", prompt))
-                )),
-                "inferenceConfig", Map.of(
-                        "temperature", DEFAULT_TEMPERATURE,
-                        "maxTokens", DEFAULT_MAX_OUTPUT_TOKENS
-                )
-        );
+        Map<String, Object> body = new LinkedHashMap<>();
+        if (systemPrompt != null && !systemPrompt.isBlank()) {
+            body.put("system", List.of(Map.of("text", systemPrompt)));
+        }
+        body.put("messages", List.of(Map.of(
+                "role", "user",
+                "content", List.of(Map.of("text", prompt))
+        )));
+        body.put("inferenceConfig", Map.of(
+                "temperature", DEFAULT_TEMPERATURE,
+                "maxTokens", DEFAULT_MAX_OUTPUT_TOKENS
+        ));
 
         try {
             Map<String, Object> response = restClient.post()
@@ -95,27 +98,32 @@ public class BedrockModelProvider implements ModelProvider {
     @Retry(name = "aiRetry")
     public float[] generateEmbedding(String text) {
 
+        ModelProviderProperties.Bedrock.Embedding embeddingProps = modelProperties.bedrock().embedding();
+
         String input = text == null ? "" : text;
-        if (modelProperties.bedrock().dimensions() != null && input.length() > modelProperties.bedrock().dimensions()) {
-            int cutoff = input.lastIndexOf(' ', modelProperties.bedrock().dimensions());
-            cutoff = cutoff > 0 ? cutoff : modelProperties.bedrock().dimensions();
+        if (embeddingProps.dimensions() != null && input.length() > embeddingProps.dimensions()) {
+            int cutoff = input.lastIndexOf(' ', embeddingProps.dimensions());
+            cutoff = cutoff > 0 ? cutoff : embeddingProps.dimensions();
             log.warn("Truncating embedding input [{} -> {} chars]", input.length(), cutoff);
             input = input.substring(0, cutoff);
         }
 
-        String modelId = modelProperties.bedrock().modelName();
-        String url = buildModelUrl(modelId, "invoke");
+        String modelId = embeddingProps.modelName();
+        URI url = buildModelUri(modelId, "invoke");
 
-        int dimensions = modelProperties.bedrock().dimensions() != null
-                ? modelProperties.bedrock().dimensions()
+        int dimensions = embeddingProps.dimensions() != null
+                ? embeddingProps.dimensions()
                 : DEFAULT_EMBEDDING_DIMENSIONS;
-        boolean normalize = modelProperties.bedrock().normalize() != null
-                ? modelProperties.bedrock().normalize()
+        boolean normalize = embeddingProps.normalize() != null
+                ? embeddingProps.normalize()
                 : DEFAULT_EMBEDDING_NORMALIZE;
 
-        log.debug("Requesting embedding from Bedrock [model={}, textLength={}, dims={}]", modelId, input.length(), dimensions);
+        log.debug("Requesting embedding from Bedrock [model={}, textLength={}, dims={}]",
+                modelId,
+                input.length(),
+                dimensions);
 
-        Map<String, Object> body = new HashMap<>();
+        Map<String, Object> body = new LinkedHashMap<>();
         body.put("inputText", input);
         if (isTitanV2(modelId)) {
             body.put("dimensions", dimensions);
@@ -146,17 +154,16 @@ public class BedrockModelProvider implements ModelProvider {
         }
     }
 
-    private String buildModelUrl(String modelId, String op) {
-        if (modelId == null || modelId.isBlank()) {
-            throw new IllegalStateException("Bedrock model id is not set (check llm-provider.bedrock-model-id and embedding-provider.bedrock-model-id)");
+    private URI buildModelUri(String modelId, String op) {
+        if (modelId == null || modelId.isBlank() || modelId.contains("${")) {
+            throw new IllegalStateException("Bedrock model id is not set or unresolved (got '" + modelId + "'). Check BEDROCK_LLM_MODEL_NAME / BEDROCK_EMBEDDING_MODEL_NAME env vars.");
         }
         String base = modelProperties.bedrock().url();
-        if (base == null || base.isBlank()) {
-            throw new IllegalStateException("model-porvider.bedrock.url is not set");
+        if (base == null || base.isBlank() || base.contains("${")) {
+            throw new IllegalStateException("Bedrock base URL is not set or unresolved (got '" + base + "'). Check BEDROCK_URL env var.");
         }
         String trimmedBase = base.endsWith("/") ? base.substring(0, base.length() - 1) : base;
-        String encoded = URLEncoder.encode(modelId, StandardCharsets.UTF_8);
-        return trimmedBase + "/model/" + encoded + "/" + op;
+        return URI.create(trimmedBase + "/model/" + modelId + "/" + op);
     }
 
     private String requireApiKey() {

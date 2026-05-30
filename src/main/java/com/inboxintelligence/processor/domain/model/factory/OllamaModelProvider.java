@@ -11,6 +11,7 @@ import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -24,26 +25,36 @@ public class OllamaModelProvider implements ModelProvider {
     private static final ParameterizedTypeReference<Map<String, List<Double>>> EMBEDDING_RESPONSE_TYPE = new ParameterizedTypeReference<>() {
     };
 
+    private static final int MAX_EMBEDDING_INPUT_CHARS = 24_000;
+
     private final RestClient restClient;
     private final ModelProviderProperties modelProperties;
 
     @Override
     @Retry(name = "aiRetry")
-    public String generate(String prompt) {
+    public String invokeLlm(String systemPrompt, String prompt) {
 
-        log.debug("Requesting LLM generation from Ollama [model={}, promptLength={}]", modelProperties.ollama().llm().modelName(), prompt.length());
+        log.debug("Requesting LLM generation from Ollama [model={}, hasSystem={}, promptLength={}]",
+                modelProperties.ollama().llm().modelName(),
+                systemPrompt != null && !systemPrompt.isBlank(),
+                prompt.length());
+
+        Map<String, Object> requestBody = new LinkedHashMap<>();
+        requestBody.put("model", modelProperties.ollama().llm().modelName());
+        requestBody.put("prompt", prompt);
+        if (systemPrompt != null && !systemPrompt.isBlank()) {
+            requestBody.put("system", systemPrompt);
+        }
+        requestBody.put("stream", false);
+        requestBody.put("keep_alive", "30s");
+        requestBody.put("options", Map.of(
+                "temperature", 0.1,
+                "num_ctx", 2048));
 
         try {
             Map<String, Object> response = restClient.post()
                     .uri(modelProperties.ollama().llm().url())
-                    .body(Map.of(
-                            "model", modelProperties.ollama().llm().modelName(),
-                            "prompt", prompt,
-                            "stream", false,
-                            "keep_alive", "30s",
-                            "options", Map.of(
-                                    "temperature", 0.1,
-                                    "num_ctx", 2048)))
+                    .body(requestBody)
                     .retrieve()
                     .body(LLM_RESPONSE_TYPE);
 
@@ -67,9 +78,9 @@ public class OllamaModelProvider implements ModelProvider {
     public float[] generateEmbedding(String text) {
 
         String input = text == null ? "" : text;
-        if (modelProperties.bedrock().dimensions() != null && input.length() > modelProperties.bedrock().dimensions()) {
-            int cutoff = input.lastIndexOf(' ', modelProperties.bedrock().dimensions());
-            cutoff = cutoff > 0 ? cutoff : modelProperties.bedrock().dimensions();
+        if (input.length() > MAX_EMBEDDING_INPUT_CHARS) {
+            int cutoff = input.lastIndexOf(' ', MAX_EMBEDDING_INPUT_CHARS);
+            cutoff = cutoff > 0 ? cutoff : MAX_EMBEDDING_INPUT_CHARS;
             log.warn("Truncating embedding input [{} -> {} chars]", input.length(), cutoff);
             input = input.substring(0, cutoff);
         }
