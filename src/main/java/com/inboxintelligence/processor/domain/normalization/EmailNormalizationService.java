@@ -33,7 +33,7 @@ public class EmailNormalizationService {
     private final EmailAttachmentService emailAttachmentService;
     private final GmailMailboxService gmailMailboxService;
     private final EmailStorageProviderFactory storageProviderFactory;
-    private final ContentNormalisationHelper contentNormalisationHelper;
+    private final ContentNormalizationHelper contentNormalizationHelper;
     private final EnrichmentApplyHelper enrichmentApplyHelper;
     private final EmailEmbeddingPublisher emailEmbeddingPublisher;
     private final RawArtifactCleanupHelper rawArtifactCleanupHelper;
@@ -75,7 +75,7 @@ public class EmailNormalizationService {
                 return;
             }
 
-            NormalisedEmailResponse result = contentNormalisationHelper.normalise(
+            NormalisedEmailResponse result = contentNormalizationHelper.normalise(
                     emailContent.getFromAddress(),
                     emailContent.getSubject(),
                     sanitizedContent);
