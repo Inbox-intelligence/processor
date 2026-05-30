@@ -7,12 +7,11 @@ import com.inboxintelligence.persistence.model.entity.EmailEnrichment;
 import com.inboxintelligence.persistence.service.EmailAttachmentService;
 import com.inboxintelligence.persistence.service.EmailContentService;
 import com.inboxintelligence.persistence.service.EmailEnrichmentService;
+import com.inboxintelligence.persistence.service.GmailMailboxService;
 import com.inboxintelligence.persistence.storage.EmailStorageProvider;
 import com.inboxintelligence.persistence.storage.EmailStorageProviderFactory;
-import com.inboxintelligence.processor.config.ModelProviderProperties;
-import com.inboxintelligence.processor.domain.model.factory.ModelProvider;
-import com.inboxintelligence.processor.domain.model.factory.ModelProviderFactory;
 import com.inboxintelligence.processor.outbound.EmailEmbeddingPublisher;
+import com.inboxintelligence.processor.outbound.IngesterImportanceClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -27,33 +26,13 @@ import static com.inboxintelligence.persistence.model.enums.ProcessedStatus.*;
 @RequiredArgsConstructor
 public class EmailNormalizationService {
 
-    private static final int MAX_NORMALIZED_CHARS = 5000;
-    private static final int MAX_PROMPT_INPUT_CHARS = 6000;
-
-    private static final String EMAIL_PLACEHOLDER = "{{EMAIL}}";
-    private static final String MAX_CHARS_PLACEHOLDER = "{{MAX_CHARS}}";
-
-    private static final String PROMPT_TEMPLATE = """
-            Rewrite the email below as a dense, factual summary optimized for semantic search.
-            Rules:
-            - Maximum {{MAX_CHARS}} characters.
-            - Plain text only. No preamble, no markdown, no bullet points, no new-lines.
-            - Use ONLY information actually present in the email. Do NOT invent, infer, or speculate.
-            - Do NOT describe the email itself or how it was generated. Summarise its CONTENT.
-            - Preserve concrete entities (people, companies, products, dates, amounts, IDs).
-            - Drop greetings, signatures, disclaimers, pleasantries, and tracking/unsubscribe links.
-            - If the email body is empty, gibberish, or has no meaningful content, reply with exactly: NO_CONTENT
-            - Output the summary ONLY - no additional text.
-            EMAIL:
-            {{EMAIL}}
-            """;
-
     private final EmailContentService emailContentService;
     private final EmailEnrichmentService emailEnrichmentService;
     private final EmailAttachmentService emailAttachmentService;
+    private final GmailMailboxService gmailMailboxService;
     private final EmailStorageProviderFactory storageProviderFactory;
-    private final ModelProviderFactory modelProviderFactory;
-    private final ModelProviderProperties modelProviderProperties;
+    private final ContentNormalisationHelper contentNormalisationHelper;
+    private final IngesterImportanceClient ingesterImportanceClient;
     private final EmailEmbeddingPublisher emailEmbeddingPublisher;
 
     public void normalizeEmail(Long emailContentId) {
@@ -82,7 +61,6 @@ public class EmailNormalizationService {
 
         try {
             EmailStorageProvider storageProvider = storageProviderFactory.getProvider();
-            ModelProvider modelProvider = modelProviderFactory.getProvider();
 
             updateStatus(emailContent, NORMALIZATION_STARTED);
 
@@ -94,41 +72,32 @@ public class EmailNormalizationService {
                 return;
             }
 
-            String promptInput = sanitizedContent.length() > MAX_PROMPT_INPUT_CHARS
-                    ? sanitizedContent.substring(0, MAX_PROMPT_INPUT_CHARS)
-                    : sanitizedContent;
+            NormalisedEmail result = contentNormalisationHelper.normalise(
+                    emailContent.getFromAddress(),
+                    emailContent.getSubject(),
+                    sanitizedContent);
 
-            String prompt = PROMPT_TEMPLATE
-                    .replace(MAX_CHARS_PLACEHOLDER, String.valueOf(MAX_NORMALIZED_CHARS))
-                    .replace(EMAIL_PLACEHOLDER, promptInput);
-
-            String generated = modelProvider.generate(prompt).trim().replace("\n", " ").replace("\r", " ");
-
-            String noContentMarker = generated.toUpperCase().replaceAll("[^A-Z]", "");
-            if (generated.isEmpty() || "NOCONTENT".equals(noContentMarker)) {
-                log.warn("Normalization rejected by LLM [id={}, sanitizedChars={}, llmResponse=\"{}\", inputPreview=\"{}\"] — marking failed",
-                        emailContent.getId(),
-                        sanitizedContent.length(),
-                        generated.isEmpty() ? "<empty>" : generated,
-                        preview(promptInput, 120));
+            if (result == null) {
+                log.warn("Normalization rejected for emailContent [id={}, sanitizedChars={}] — marking failed", emailContent.getId(), sanitizedContent.length());
                 updateStatus(emailContent, NORMALIZATION_FAILED);
-                log.debug("EmailContent [id={}] failure persisted (status=NORMALIZATION_FAILED)", emailContent.getId());
                 return;
             }
 
-            String prepended = prependHeaders(emailContent, generated);
-            String normalized = prepended.length() > MAX_NORMALIZED_CHARS
-                    ? prepended.substring(0, MAX_NORMALIZED_CHARS)
-                    : prepended;
+            String normalized = prependHeaders(emailContent, result.summary());
 
             enrichment.setGmailMailboxId(emailContent.getGmailMailboxId());
             enrichment.setEmailContentId(emailContent.getId());
             enrichment.setNormalizedContent(normalized);
+            enrichment.setImportance(result.importance());
+            enrichment.setImportanceReason(result.reason());
 
             emailEnrichmentService.save(enrichment);
 
             updateStatus(emailContent, NORMALIZATION_COMPLETED);
-            log.info("Normalized [id={}, {} -> {} chars, model={}]", emailContent.getId(), sanitizedContent.length(), normalized.length(), modelProviderProperties.ollama().llm().modelName());
+            log.info("Normalized [id={}, {} -> {} chars, importance={}]",
+                    emailContent.getId(), sanitizedContent.length(), normalized.length(), result.importance());
+
+            forwardImportanceToIngester(emailContent, result);
 
             emailEmbeddingPublisher.publishEmbeddingEvent(emailContent);
 
@@ -168,9 +137,20 @@ public class EmailNormalizationService {
         return sb.toString();
     }
 
-    private static String preview(String s, int max) {
-        if (s == null) return "<null>";
-        String oneLine = s.replace("\n", "\\n").replace("\r", "\\r");
-        return oneLine.length() > max ? oneLine.substring(0, max) + "…" : oneLine;
+    // Fire-and-forget; enrichment is already saved.
+    private void forwardImportanceToIngester(EmailContent emailContent, NormalisedEmail result) {
+
+        if (result.importance() == null || result.importance() == com.inboxintelligence.persistence.model.enums.Importance.LOW) {
+            return;
+        }
+
+        gmailMailboxService.findById(emailContent.getGmailMailboxId())
+                .ifPresentOrElse(
+                        mailbox -> ingesterImportanceClient.applyImportance(
+                                mailbox.getEmailAddress(),
+                                emailContent.getMessageId(),
+                                result.importance()),
+                        () -> log.warn("Mailbox {} not found — cannot forward importance for emailContent [id={}]",
+                                emailContent.getGmailMailboxId(), emailContent.getId()));
     }
 }

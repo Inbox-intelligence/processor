@@ -1,7 +1,6 @@
 package com.inboxintelligence.processor.domain.sanitization;
 
 import com.inboxintelligence.persistence.model.entity.EmailContent;
-import com.inboxintelligence.persistence.service.EmailAttachmentService;
 import com.inboxintelligence.persistence.service.EmailContentService;
 import com.inboxintelligence.persistence.service.GmailMailboxService;
 import com.inboxintelligence.persistence.storage.EmailStorageProvider;
@@ -27,9 +26,17 @@ public class EmailSanitizationService {
     private static final String TEXT = "TEXT";
     private static final String JSON = "JSON";
 
+    // The bigger the raw input, the more reduction we tolerate — large HTML
+    // emails are mostly CSS / layout chrome that legitimately strips away.
+    private static final int MIN_USEFUL_CHARS = 50;
+    private static final int SMALL_RAW_THRESHOLD = 2_000;
+    private static final int LARGE_RAW_THRESHOLD = 10_000;
+    private static final double SMALL_RAW_MAX_REDUCTION = 0.80;
+    private static final double MEDIUM_RAW_MAX_REDUCTION = 0.95;
+    private static final double LARGE_RAW_MAX_REDUCTION = 0.98;
+
     private final EmailNormalizationPublisher emailNormalizationPublisher;
     private final EmailContentService emailContentService;
-    private final EmailAttachmentService emailAttachmentService;
     private final GmailMailboxService gmailMailboxService;
     private final EmailStorageProviderFactory storageProviderFactory;
     private final ContentSanitizationPipelineRegistry pipelineRegistry;
@@ -79,12 +86,7 @@ public class EmailSanitizationService {
 
             String sanitizedContent = pipelineRegistry.executeSanitizationPipeline(rawContent);
 
-            boolean tooFewChars = sanitizedContent.length() < 20;
-            boolean severeReduction = originalLength >= 100 && sanitizedContent.length() < originalLength * 0.1;
-
-            if (tooFewChars || severeReduction) {
-                long pctRemoved = Math.round(100.0 * (1.0 - (double) sanitizedContent.length() / Math.max(1, originalLength)));
-                log.warn("Sanitization left too little content [id={}, {} -> {} chars, {}% removed] — falling back to raw", emailContent.getId(), originalLength, sanitizedContent.length(), pctRemoved);
+            if (isOverStripped(emailContent.getId(), sanitizedContent, originalLength)) {
                 sanitizedContent = rawContent;
             }
 
@@ -110,17 +112,47 @@ public class EmailSanitizationService {
 
     private void markStatusAndPublishForNormalization(EmailStorageProvider provider, EmailContent emailContent) {
 
+        /* - This stays deleted for time being.
         provider.deleteContent(emailContent.getRawContentPath());
         emailAttachmentService.deleteAllByEmailContentId(emailContent.getId(), provider);
+        emailContent.setRawContentPath(null);*/
 
-        emailContent.setRawContentPath(null);
         updateStatus(emailContent, SANITIZATION_COMPLETED);
-
         emailNormalizationPublisher.publishNormalizationEvent(emailContent);
     }
 
     private void updateStatus(EmailContent emailContent, com.inboxintelligence.persistence.model.enums.ProcessedStatus status) {
         emailContent.setProcessedStatus(status);
         emailContentService.save(emailContent);
+    }
+
+
+    private static boolean isOverStripped(Long emailContentId, String sanitized, int originalLength) {
+
+        int sanitizedLength = sanitized.length();
+        double reductionRatio = 1.0 - (double) sanitizedLength / Math.max(1, originalLength);
+        long pctRemoved = Math.round(100.0 * reductionRatio);
+
+        if (sanitizedLength < MIN_USEFUL_CHARS) {
+            log.warn("Sanitization over-stripped [id={}, {} -> {} chars, {}% removed, reason=below-floor] — falling back to raw content for LLM", emailContentId, originalLength, sanitizedLength, pctRemoved);
+            return true;
+        }
+
+        if (originalLength < SMALL_RAW_THRESHOLD && reductionRatio > SMALL_RAW_MAX_REDUCTION) {
+            log.warn("Sanitization over-stripped [id={}, {} -> {} chars, {}% removed, reason=small-raw-high-reduction] — falling back to raw content for LLM", emailContentId, originalLength, sanitizedLength, pctRemoved);
+            return true;
+        }
+
+        if (originalLength >= SMALL_RAW_THRESHOLD && originalLength < LARGE_RAW_THRESHOLD && reductionRatio > MEDIUM_RAW_MAX_REDUCTION) {
+            log.warn("Sanitization over-stripped [id={}, {} -> {} chars, {}% removed, reason=medium-raw-severe-reduction] — falling back to raw content for LLM", emailContentId, originalLength, sanitizedLength, pctRemoved);
+            return true;
+        }
+
+        if (originalLength >= LARGE_RAW_THRESHOLD && reductionRatio > LARGE_RAW_MAX_REDUCTION) {
+            log.warn("Sanitization over-stripped [id={}, {} -> {} chars, {}% removed, reason=large-raw-extreme-reduction] — falling back to raw content for LLM", emailContentId, originalLength, sanitizedLength, pctRemoved);
+            return true;
+        }
+
+        return false;
     }
 }
