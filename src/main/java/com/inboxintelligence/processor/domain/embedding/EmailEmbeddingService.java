@@ -50,7 +50,7 @@ public class EmailEmbeddingService {
 
     private void invokeEmbeddingGeneration(EmailContent emailContent, EmailEnrichment enrichment) {
         try {
-            ModelProvider modelProvider = modelProviderFactory.getProvider();
+            ModelProvider modelProvider = modelProviderFactory.getEmbeddingProvider();
 
             updateStatus(emailContent, EMBEDDING_STARTED);
 
