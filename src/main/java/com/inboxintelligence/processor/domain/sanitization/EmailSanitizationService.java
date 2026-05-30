@@ -41,6 +41,35 @@ public class EmailSanitizationService {
     private final EmailStorageProviderFactory storageProviderFactory;
     private final ContentSanitizationPipelineRegistry pipelineRegistry;
 
+    private static boolean isOverStripped(Long emailContentId, String sanitized, int originalLength) {
+
+        int sanitizedLength = sanitized.length();
+        double reductionRatio = 1.0 - (double) sanitizedLength / Math.max(1, originalLength);
+        long pctRemoved = Math.round(100.0 * reductionRatio);
+
+        if (sanitizedLength < MIN_USEFUL_CHARS) {
+            log.warn("Sanitization over-stripped [id={}, {} -> {} chars, {}% removed, reason=below-floor] — falling back to raw content for LLM", emailContentId, originalLength, sanitizedLength, pctRemoved);
+            return true;
+        }
+
+        if (originalLength < SMALL_RAW_THRESHOLD && reductionRatio > SMALL_RAW_MAX_REDUCTION) {
+            log.warn("Sanitization over-stripped [id={}, {} -> {} chars, {}% removed, reason=small-raw-high-reduction] — falling back to raw content for LLM", emailContentId, originalLength, sanitizedLength, pctRemoved);
+            return true;
+        }
+
+        if (originalLength >= SMALL_RAW_THRESHOLD && originalLength < LARGE_RAW_THRESHOLD && reductionRatio > MEDIUM_RAW_MAX_REDUCTION) {
+            log.warn("Sanitization over-stripped [id={}, {} -> {} chars, {}% removed, reason=medium-raw-severe-reduction] — falling back to raw content for LLM", emailContentId, originalLength, sanitizedLength, pctRemoved);
+            return true;
+        }
+
+        if (originalLength >= LARGE_RAW_THRESHOLD && reductionRatio > LARGE_RAW_MAX_REDUCTION) {
+            log.warn("Sanitization over-stripped [id={}, {} -> {} chars, {}% removed, reason=large-raw-extreme-reduction] — falling back to raw content for LLM", emailContentId, originalLength, sanitizedLength, pctRemoved);
+            return true;
+        }
+
+        return false;
+    }
+
     public void sanitizeEmail(Long emailContentId) {
 
         log.debug("Starting sanitization for email id: {}", emailContentId);
@@ -55,7 +84,8 @@ public class EmailSanitizationService {
 
         if (StringUtils.hasText(sanitizedContent)) {
             log.warn("EmailContent [id={}] already past sanitization (status={}) — skipping redelivery", emailContentId, emailContent.getProcessedStatus());
-            markStatusAndPublishForNormalization(provider, emailContent);
+            updateStatus(emailContent, SANITIZATION_COMPLETED);
+            emailNormalizationPublisher.publishNormalizationEvent(emailContent);
         } else {
             invokeSanitization(provider, emailContent);
         }
@@ -101,7 +131,10 @@ public class EmailSanitizationService {
 
             emailContent.setSanitizedContentPath(path);
             log.debug("Sanitized content stored at {} [id={}]", path, emailContent.getId());
-            markStatusAndPublishForNormalization(provider, emailContent);
+
+            updateStatus(emailContent, SANITIZATION_COMPLETED);
+            emailNormalizationPublisher.publishNormalizationEvent(emailContent);
+
 
         } catch (Exception e) {
             log.error("Failed to process emailContent [id={}]: {}", emailContent.getId(), e.getMessage(), e);
@@ -110,49 +143,8 @@ public class EmailSanitizationService {
         }
     }
 
-    private void markStatusAndPublishForNormalization(EmailStorageProvider provider, EmailContent emailContent) {
-
-        /* - This stays deleted for time being.
-        provider.deleteContent(emailContent.getRawContentPath());
-        emailAttachmentService.deleteAllByEmailContentId(emailContent.getId(), provider);
-        emailContent.setRawContentPath(null);*/
-
-        updateStatus(emailContent, SANITIZATION_COMPLETED);
-        emailNormalizationPublisher.publishNormalizationEvent(emailContent);
-    }
-
     private void updateStatus(EmailContent emailContent, com.inboxintelligence.persistence.model.enums.ProcessedStatus status) {
         emailContent.setProcessedStatus(status);
         emailContentService.save(emailContent);
-    }
-
-
-    private static boolean isOverStripped(Long emailContentId, String sanitized, int originalLength) {
-
-        int sanitizedLength = sanitized.length();
-        double reductionRatio = 1.0 - (double) sanitizedLength / Math.max(1, originalLength);
-        long pctRemoved = Math.round(100.0 * reductionRatio);
-
-        if (sanitizedLength < MIN_USEFUL_CHARS) {
-            log.warn("Sanitization over-stripped [id={}, {} -> {} chars, {}% removed, reason=below-floor] — falling back to raw content for LLM", emailContentId, originalLength, sanitizedLength, pctRemoved);
-            return true;
-        }
-
-        if (originalLength < SMALL_RAW_THRESHOLD && reductionRatio > SMALL_RAW_MAX_REDUCTION) {
-            log.warn("Sanitization over-stripped [id={}, {} -> {} chars, {}% removed, reason=small-raw-high-reduction] — falling back to raw content for LLM", emailContentId, originalLength, sanitizedLength, pctRemoved);
-            return true;
-        }
-
-        if (originalLength >= SMALL_RAW_THRESHOLD && originalLength < LARGE_RAW_THRESHOLD && reductionRatio > MEDIUM_RAW_MAX_REDUCTION) {
-            log.warn("Sanitization over-stripped [id={}, {} -> {} chars, {}% removed, reason=medium-raw-severe-reduction] — falling back to raw content for LLM", emailContentId, originalLength, sanitizedLength, pctRemoved);
-            return true;
-        }
-
-        if (originalLength >= LARGE_RAW_THRESHOLD && reductionRatio > LARGE_RAW_MAX_REDUCTION) {
-            log.warn("Sanitization over-stripped [id={}, {} -> {} chars, {}% removed, reason=large-raw-extreme-reduction] — falling back to raw content for LLM", emailContentId, originalLength, sanitizedLength, pctRemoved);
-            return true;
-        }
-
-        return false;
     }
 }

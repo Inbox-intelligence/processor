@@ -1,17 +1,19 @@
 package com.inboxintelligence.processor.domain.normalization;
 
-import com.inboxintelligence.persistence.model.enums.ProcessedStatus;
 import com.inboxintelligence.persistence.model.entity.EmailAttachment;
 import com.inboxintelligence.persistence.model.entity.EmailContent;
 import com.inboxintelligence.persistence.model.entity.EmailEnrichment;
+import com.inboxintelligence.persistence.model.enums.ProcessedStatus;
 import com.inboxintelligence.persistence.service.EmailAttachmentService;
 import com.inboxintelligence.persistence.service.EmailContentService;
 import com.inboxintelligence.persistence.service.EmailEnrichmentService;
 import com.inboxintelligence.persistence.service.GmailMailboxService;
 import com.inboxintelligence.persistence.storage.EmailStorageProvider;
 import com.inboxintelligence.persistence.storage.EmailStorageProviderFactory;
+import com.inboxintelligence.processor.domain.EnrichmentApplyHelper;
+import com.inboxintelligence.processor.domain.RawArtifactCleanupHelper;
+import com.inboxintelligence.processor.model.NormalisedEmailResponse;
 import com.inboxintelligence.processor.outbound.EmailEmbeddingPublisher;
-import com.inboxintelligence.processor.outbound.IngesterImportanceClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -32,8 +34,9 @@ public class EmailNormalizationService {
     private final GmailMailboxService gmailMailboxService;
     private final EmailStorageProviderFactory storageProviderFactory;
     private final ContentNormalisationHelper contentNormalisationHelper;
-    private final IngesterImportanceClient ingesterImportanceClient;
+    private final EnrichmentApplyHelper enrichmentApplyHelper;
     private final EmailEmbeddingPublisher emailEmbeddingPublisher;
+    private final RawArtifactCleanupHelper rawArtifactCleanupHelper;
 
     public void normalizeEmail(Long emailContentId) {
 
@@ -72,7 +75,7 @@ public class EmailNormalizationService {
                 return;
             }
 
-            NormalisedEmail result = contentNormalisationHelper.normalise(
+            NormalisedEmailResponse result = contentNormalisationHelper.normalise(
                     emailContent.getFromAddress(),
                     emailContent.getSubject(),
                     sanitizedContent);
@@ -88,18 +91,19 @@ public class EmailNormalizationService {
             enrichment.setGmailMailboxId(emailContent.getGmailMailboxId());
             enrichment.setEmailContentId(emailContent.getId());
             enrichment.setNormalizedContent(normalized);
-            enrichment.setImportance(result.importance());
-            enrichment.setImportanceReason(result.reason());
 
             emailEnrichmentService.save(enrichment);
 
             updateStatus(emailContent, NORMALIZATION_COMPLETED);
-            log.info("Normalized [id={}, {} -> {} chars, importance={}]",
-                    emailContent.getId(), sanitizedContent.length(), normalized.length(), result.importance());
+            log.info("Normalized [id={}, {} -> {} chars]", emailContent.getId(), sanitizedContent.length(), normalized.length());
 
-            forwardImportanceToIngester(emailContent, result);
+            String mailboxAddress = gmailMailboxService.findById(emailContent.getGmailMailboxId())
+                    .orElseThrow(() -> new IllegalStateException("Mailbox not found: " + emailContent.getGmailMailboxId()))
+                    .getEmailAddress();
 
             emailEmbeddingPublisher.publishEmbeddingEvent(emailContent);
+            enrichmentApplyHelper.apply(mailboxAddress, emailContent, result);
+            rawArtifactCleanupHelper.cleanup(emailContent);
 
         } catch (Exception e) {
             log.error("Failed to normalize emailContent [id={}]: {}", emailContent.getId(), e.getMessage(), e);
@@ -137,20 +141,4 @@ public class EmailNormalizationService {
         return sb.toString();
     }
 
-    // Fire-and-forget; enrichment is already saved.
-    private void forwardImportanceToIngester(EmailContent emailContent, NormalisedEmail result) {
-
-        if (result.importance() == null || result.importance() == com.inboxintelligence.persistence.model.enums.Importance.LOW) {
-            return;
-        }
-
-        gmailMailboxService.findById(emailContent.getGmailMailboxId())
-                .ifPresentOrElse(
-                        mailbox -> ingesterImportanceClient.applyImportance(
-                                mailbox.getEmailAddress(),
-                                emailContent.getMessageId(),
-                                result.importance()),
-                        () -> log.warn("Mailbox {} not found — cannot forward importance for emailContent [id={}]",
-                                emailContent.getGmailMailboxId(), emailContent.getId()));
-    }
 }

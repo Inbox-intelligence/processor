@@ -36,6 +36,10 @@ public class BedrockModelProvider implements ModelProvider {
     private final RestClient restClient;
     private final ModelProviderProperties modelProperties;
 
+    private static boolean isTitanV2(String modelId) {
+        return modelId != null && modelId.contains("titan-embed-text-v2");
+    }
+
     @Override
     @Retry(name = "aiRetry")
     public String invokeLlm(String systemPrompt, String prompt) {
@@ -172,10 +176,6 @@ public class BedrockModelProvider implements ModelProvider {
             throw new IllegalStateException("model-porvider.bedrock.api-key is not set");
         }
         return key;
-    }
-
-    private static boolean isTitanV2(String modelId) {
-        return modelId != null && modelId.contains("titan-embed-text-v2");
     }
 
     @SuppressWarnings("unchecked")

@@ -1,10 +1,10 @@
 package com.inboxintelligence.processor.domain.clustering;
 
-import com.inboxintelligence.persistence.model.enums.ClusterAssignmentType;
-import com.inboxintelligence.persistence.model.enums.ProcessedStatus;
 import com.inboxintelligence.persistence.model.entity.Cluster;
 import com.inboxintelligence.persistence.model.entity.EmailContent;
 import com.inboxintelligence.persistence.model.entity.EmailEnrichment;
+import com.inboxintelligence.persistence.model.enums.ClusterAssignmentType;
+import com.inboxintelligence.persistence.model.enums.ProcessedStatus;
 import com.inboxintelligence.persistence.service.ClusterService;
 import com.inboxintelligence.persistence.service.EmailContentService;
 import com.inboxintelligence.persistence.service.EmailEnrichmentService;
