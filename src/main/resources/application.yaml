@@ -92,42 +92,6 @@ resilience4j:
         retry-exceptions:
           - com.inboxintelligence.processor.exception.RetryableAIException
 
-sanitization:
-  quoted-text-patterns:
-    - "(?m)^On .{10,80}<[^>]+>\\s*wrote:\\s*$"
-    - "(?m)^On .{10,80} wrote:\\s*$"
-    - "(?m)^-{3,}\\s*Original Message\\s*-{3,}"
-    - "(?ms)^From:\\s.*\\nSent:\\s.*\\nTo:\\s.*"
-    - "(?m)^_{3,}\\s*$"
-  signature-patterns:
-    - "^-- ?$"
-    - "(?i)^Sent from my (iPhone|iPad|Galaxy|Samsung)"
-    - "(?i)^Sent from Mail for Windows"
-    - "(?i)^Get Outlook for (iOS|Android)"
-    - "(?i)^Sent from Yahoo Mail"
-  sign-off-phrases:
-    - "best regards"
-    - "kind regards"
-    - "warm regards"
-    - "regards"
-    - "thanks"
-    - "thank you"
-    - "cheers"
-    - "sincerely"
-    - "respectfully"
-    - "best"
-  disclaimer-keywords:
-    - "confidential"
-    - "privileged"
-    - "intended recipient"
-    - "unauthorized"
-    - "disclaimer"
-    - "this email"
-    - "this message"
-    - "please notify"
-    - "delete this"
-    - "legally privileged"
-
 logging:
   level:
     root: WARN
