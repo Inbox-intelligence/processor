@@ -28,6 +28,7 @@ public class BedrockModelProvider implements ModelProvider {
     };
 
     private static final double DEFAULT_TEMPERATURE = 0.0;
+    private static final double DEFAULT_TOP_P = 1.0;
     private static final int DEFAULT_MAX_OUTPUT_TOKENS = 512;
     private static final int MAX_PROMPT_CHARS = 24_000;
     private static final int DEFAULT_EMBEDDING_DIMENSIONS = 1024;
@@ -69,6 +70,7 @@ public class BedrockModelProvider implements ModelProvider {
         )));
         body.put("inferenceConfig", Map.of(
                 "temperature", DEFAULT_TEMPERATURE,
+                "topP", DEFAULT_TOP_P,
                 "maxTokens", DEFAULT_MAX_OUTPUT_TOKENS
         ));
 

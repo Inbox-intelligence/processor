@@ -3,6 +3,8 @@ package com.inboxintelligence.processor.domain.normalization;
 import com.inboxintelligence.persistence.model.entity.EmailAttachment;
 import com.inboxintelligence.persistence.model.entity.EmailContent;
 import com.inboxintelligence.persistence.model.entity.EmailEnrichment;
+import com.inboxintelligence.persistence.model.enums.Category;
+import com.inboxintelligence.persistence.model.enums.Importance;
 import com.inboxintelligence.persistence.model.enums.ProcessedStatus;
 import com.inboxintelligence.persistence.service.EmailAttachmentService;
 import com.inboxintelligence.persistence.service.EmailContentService;
@@ -10,10 +12,9 @@ import com.inboxintelligence.persistence.service.EmailEnrichmentService;
 import com.inboxintelligence.persistence.service.GmailMailboxService;
 import com.inboxintelligence.persistence.storage.EmailStorageProvider;
 import com.inboxintelligence.persistence.storage.EmailStorageProviderFactory;
-import com.inboxintelligence.processor.domain.EnrichmentApplyHelper;
-import com.inboxintelligence.processor.domain.RawArtifactCleanupHelper;
 import com.inboxintelligence.processor.model.NormalisedEmailResponse;
 import com.inboxintelligence.processor.outbound.EmailEmbeddingPublisher;
+import com.inboxintelligence.processor.outbound.IngesterEnrichmentClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -31,12 +32,11 @@ public class EmailNormalizationService {
     private final EmailContentService emailContentService;
     private final EmailEnrichmentService emailEnrichmentService;
     private final EmailAttachmentService emailAttachmentService;
-    private final GmailMailboxService gmailMailboxService;
     private final EmailStorageProviderFactory storageProviderFactory;
-    private final ContentNormalizationHelper contentNormalizationHelper;
-    private final EnrichmentApplyHelper enrichmentApplyHelper;
+    private final NormalizationPromptHelper normalizationPromptHelper;
     private final EmailEmbeddingPublisher emailEmbeddingPublisher;
-    private final RawArtifactCleanupHelper rawArtifactCleanupHelper;
+    private final IngesterEnrichmentClient ingesterEnrichmentClient;
+    private final GmailMailboxService gmailMailboxService;
 
     public void normalizeEmail(Long emailContentId) {
 
@@ -75,7 +75,7 @@ public class EmailNormalizationService {
                 return;
             }
 
-            NormalisedEmailResponse result = contentNormalizationHelper.normalise(
+            NormalisedEmailResponse result = normalizationPromptHelper.normalise(
                     emailContent.getFromAddress(),
                     emailContent.getSubject(),
                     sanitizedContent);
@@ -91,25 +91,22 @@ public class EmailNormalizationService {
             enrichment.setGmailMailboxId(emailContent.getGmailMailboxId());
             enrichment.setEmailContentId(emailContent.getId());
             enrichment.setNormalizedContent(normalized);
-
             emailEnrichmentService.save(enrichment);
 
             updateStatus(emailContent, NORMALIZATION_COMPLETED);
             log.info("Normalized [id={}, {} -> {} chars]", emailContent.getId(), sanitizedContent.length(), normalized.length());
 
-            String mailboxAddress = gmailMailboxService.findById(emailContent.getGmailMailboxId())
-                    .orElseThrow(() -> new IllegalStateException("Mailbox not found: " + emailContent.getGmailMailboxId()))
-                    .getEmailAddress();
-
+            this.cleanup(emailContent);
+            this.enrichEmail(emailContent, enrichment, result);
             emailEmbeddingPublisher.publishEmbeddingEvent(emailContent);
-            enrichmentApplyHelper.apply(mailboxAddress, emailContent, result);
-            rawArtifactCleanupHelper.cleanup(emailContent);
 
         } catch (Exception e) {
             log.error("Failed to normalize emailContent [id={}]: {}", emailContent.getId(), e.getMessage(), e);
             updateStatus(emailContent, NORMALIZATION_FAILED);
             throw e;
         }
+
+
     }
 
     private void updateStatus(EmailContent emailContent, ProcessedStatus status) {
@@ -141,4 +138,46 @@ public class EmailNormalizationService {
         return sb.toString();
     }
 
+    private void cleanup(EmailContent emailContent) {
+        try {
+            EmailStorageProvider provider = storageProviderFactory.getProvider();
+
+            String rawPath = emailContent.getRawContentPath();
+            String sanitizedPath = emailContent.getSanitizedContentPath();
+
+            provider.deleteContent(rawPath);
+            provider.deleteContent(sanitizedPath);
+            emailAttachmentService.deleteAllByEmailContentId(emailContent.getId(), provider);
+
+            if (rawPath != null || sanitizedPath != null) {
+                emailContent.setRawContentPath(null);
+                emailContent.setSanitizedContentPath(null);
+                emailContentService.save(emailContent);
+                log.debug("Cleaned up raw/sanitized/attachment artifacts for emailContent [id={}]", emailContent.getId());
+            }
+        } catch (Exception e) {
+            log.error("Cleanup of raw artifacts failed for emailContent [id={}] — leaving files in place: {}", emailContent.getId(), e.getMessage());
+        }
+    }
+
+    public void enrichEmail(EmailContent emailContent, EmailEnrichment enrichment, NormalisedEmailResponse result) {
+
+        String mailboxAddress = gmailMailboxService.findById(emailContent.getGmailMailboxId())
+                .orElseThrow(() -> new IllegalStateException("Gmail mailbox not found for emailContent [id=" + emailContent.getId() + "]"))
+                .getEmailAddress();
+
+        ingesterEnrichmentClient.applyEnrichment(
+                mailboxAddress,
+                emailContent.getMessageId(),
+                result.importance().name(),
+                result.category().name());
+
+        enrichment.setImportance(result.importance());
+        enrichment.setImportanceReason(result.importanceReason());
+        enrichment.setCategory(result.category());
+        enrichment.setCategoryReason(result.categoryReason());
+        emailEnrichmentService.save(enrichment);
+
+        log.debug("Persisted enrichment importance/category for emailContent [id={}, importance={}, category={}]", emailContent.getId(), result.importance(), result.category());
+    }
 }

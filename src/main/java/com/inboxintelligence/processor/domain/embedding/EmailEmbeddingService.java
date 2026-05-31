@@ -6,7 +6,6 @@ import com.inboxintelligence.persistence.model.entity.EmailEnrichment;
 import com.inboxintelligence.persistence.service.EmailContentService;
 import com.inboxintelligence.persistence.service.EmailEnrichmentService;
 import com.inboxintelligence.processor.config.ModelProviderProperties;
-import com.inboxintelligence.processor.domain.RawArtifactCleanupHelper;
 import com.inboxintelligence.processor.domain.model.factory.ModelProvider;
 import com.inboxintelligence.processor.domain.model.factory.ModelProviderFactory;
 import com.inboxintelligence.processor.outbound.EmailClusteringPublisher;

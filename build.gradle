@@ -48,6 +48,7 @@ dependencies {
     runtimeOnly 'org.postgresql:postgresql'
 
     implementation 'org.jsoup:jsoup:1.18.3'
+    implementation 'org.apache.commons:commons-lang3:3.16.0'
 
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
